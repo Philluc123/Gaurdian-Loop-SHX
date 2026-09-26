@@ -33,8 +33,108 @@ export interface Turn {
   endMs: number;
 }
 
+// --- LLM classifier (docs/module-contracts.md section 3.5) ---
+
+export interface LLMRequest {
+  callId: CallId;
+  seq: number;
+  trigger: "rule" | "victim" | "heartbeat";
+  state: {
+    score: number;
+    signals: Signal[];
+    elapsedSec: number;
+    carryContext: string; // e.g. "caller claims to be from Medicare"
+  };
+  turns: Array<{ speaker: Speaker; text: string }>; // last 4-6 final turns
+}
+
+export interface LLMResult {
+  type: "llm.result";
+  callId: CallId;
+  seq: number; // echoed back for staleness checks
+  signals: Signal[];
+  score: number; // Gemini's own 0-100 estimate
+  benignContext: boolean; // true if context suggests a legitimate call
+  reason: string; // one line, max ~15 words; "llm_error" on failure
+  carryContext: string; // updated one-line memory for next call
+  latencyMs: number;
+  model: string;
+  ts: number;
+}
+
+// --- Rules classifier (docs/module-contracts.md section 3.4) ---
+
+export interface RuleHit {
+  ruleId: string; // e.g. "payment.gift_card"
+  signal: Signal;
+  weight: number; // points this hit contributes
+  match: string; // matched text
+  start: number; // character offsets in `text`,
+  end: number; //   used for dashboard highlighting
+}
+
+export interface RulesHitsEvent {
+  type: "rules.hits";
+  callId: CallId;
+  segmentId: string;
+  speaker: Speaker;
+  isFinal: boolean; // partial hits = highlight only; final hits = scoring
+  hits: RuleHit[];
+  ts: number;
+}
+
+// --- Score engine (docs/module-contracts.md section 3.6) ---
+
+export interface ScoreTick {
+  type: "tick";
+  ts: number;
+}
+
+export interface ScoreState {
+  score: number;
+  floor: number; // minimum set by hard rule combos; LLM can't go below it
+  level: RiskLevel;
+  signals: Partial<Record<Signal, { source: "rules" | "llm" | "both"; firstSeenMs: number }>>;
+  alertArmed: boolean; // re-arms after score drops well below threshold
+  lastReason: string;
+}
+
+export interface ScoreUpdated {
+  type: "score.updated";
+  callId: CallId;
+  score: number;
+  level: RiskLevel;
+  signals: Signal[];
+  reason: string; // latest human-readable explanation
+  source: "rules" | "llm" | "decay";
+  ts: number;
+}
+
+export interface AlertTriggered {
+  type: "alert.triggered";
+  callId: CallId;
+  alertId: string;
+  score: number;
+  threshold: number; // 70 for the demo
+  reason: string;
+  snippet: Array<{ speaker: Speaker; text: string }>; // last 2-3 turns
+  ts: number;
+}
+
+// --- Alerts (docs/module-contracts.md section 3.7) ---
+
+export interface AlertSent {
+  type: "alert.sent";
+  callId: CallId;
+  alertId: string;
+  channel: "sms";
+  status: "sent" | "failed"; // "sent" = provider accepted it, not handset delivery
+  providerId?: string; // Twilio message SID
+  error?: string;
+  ts: number;
+}
+
 // TODO(workstream owners): as each module's events stabilize, add their
-// interfaces here too (CallStarted, AudioFrame, TranscriptEvent, RuleHit,
-// RulesHitsEvent, LLMRequest/LLMResult, ScoreState/ScoreUpdated/AlertTriggered,
-// AlertSent, ClientMsg/ServerMsg) so both apps/server and apps/dashboard import
+// interfaces here too (CallStarted, AudioFrame, TranscriptEvent,
+// ClientMsg/ServerMsg) so both apps/server and apps/dashboard import
 // the same definitions. Full shapes are in docs/module-contracts.md section 3.

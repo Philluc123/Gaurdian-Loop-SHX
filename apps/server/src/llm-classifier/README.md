@@ -22,10 +22,19 @@ enforced to:
   "carry_context": "Caller claims to be from Medicare" }
 ```
 
+## Configuration
+
+- `GEMINI_API_KEY`: required. Without it, every call resolves with `llm_error`.
+- `GEMINI_MODEL`: optional. The default is `gemini-2.5-flash-lite`. Settings are
+  temperature 0, thinking budget 0, and max 256 output tokens.
+- Tests inject a fake client with `createClassifier({ generate })`, so they need no API key.
+
 ## Failure handling
 
 On error or timeout (~3s), resolve with `signals: []` and `reason: "llm_error"` — this
-module must never throw or hang the orchestrator's pipeline.
+module must never throw or hang the orchestrator's pipeline. The error result also
+echoes the request's `state.score` and `state.carryContext`, so a failed call can't
+wipe the call's memory or pull the score down.
 
 ## Security note
 

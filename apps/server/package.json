@@ -11,11 +11,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@google/genai": "^2.24.0",
     "@guardian-loop/shared-types": "*"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
     "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   }
 }

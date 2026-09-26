@@ -307,14 +307,23 @@ ignores instructions spoken inside the transcript.
 ```ts
 function updateScore(
   prev: ScoreState,
-  input: RulesHitsEvent | LLMResult | { type: "tick"; ts: number }
+  input: RulesHitsEvent | LLMResult | { type: "tick"; ts: number },
+  ctx: ScoreContext
 ): { next: ScoreState; events: Array<ScoreUpdated | AlertTriggered> };
+
+// Per-call facts the orchestrator already holds, passed in so the reducer can emit
+// complete events (tick has no callId; alerts need a snippet) while staying pure.
+interface ScoreContext {
+  callId: CallId;
+  startedAt: number;                      // CallState.startedAt, for firstSeenMs
+  recentTurns: Array<{ speaker: Speaker; text: string }>;   // last 3 become AlertTriggered.snippet
+}
 
 interface ScoreState {
   score: number;
   floor: number;                          // minimum set by hard rule combos; LLM can't go below it
   level: RiskLevel;
-  signals: Partial<Record<Signal, { source: "rules" | "llm" | "both"; firstSeenMs: number }>>;
+  signals: Partial<Record<Signal, { source: "rules" | "llm" | "both"; firstSeenMs: number }>>;   // firstSeenMs: since call start
   alertArmed: boolean;                    // re-arms after score drops well below threshold
   lastReason: string;
 }
@@ -369,7 +378,7 @@ interface AlertSent {
   callId: CallId;
   alertId: string;
   channel: "sms";
-  status: "sent" | "failed";
+  status: "sent" | "failed";              // "sent" = Twilio accepted it, not handset delivery
   providerId?: string;                    // Twilio message SID
   error?: string;
   ts: number;
