@@ -42,7 +42,11 @@ function int(name: string, fallback: number): number {
 }
 
 /** Paths the browser clients connect to. */
-export const CALL_PAGE_PATH = "/call";
+/**
+ * The WebRTC call page. Not /call: the guardian dashboard owns /call/<callId> (§3.8),
+ * and the alert notification links there (§3.7).
+ */
+export const CALL_PAGE_PATH = "/join";
 /**
  * One socket per participant carries both signalling and audio. Two endpoints
  * would mean reconciling two lifecycles per person for no benefit.

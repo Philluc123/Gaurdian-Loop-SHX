@@ -17,11 +17,14 @@ import {
 } from "./config";
 import { bus } from "./event-bus";
 import { createWebRtcIngestion } from "./call-ingestion/webrtc";
+import { createMemoryEventStore } from "./event-store/memory";
+import { createOrchestrator } from "./orchestrator";
+import { createDashboardFeed } from "./orchestrator/dashboard-feed";
 import { createSttAdapter, createSttBridge } from "./stt-adapters";
 import { createTranscriptLog } from "./transcript-log";
 
-// TODO: register orchestrator, rules-classifier, llm-classifier, score-engine,
-// alerts and event-store here as those workstreams land.
+// TODO: the LLM trigger policy (M4) and the alerts module (M3) register through the
+// orchestrator as they're wired in.
 
 function main(): void {
   const serverCfg = loadServerConfig();
@@ -49,6 +52,16 @@ function main(): void {
 
   const bridge = createSttBridge(bus, createSttAdapter(sttCfg));
 
+  // Order matters: the dashboard feed pushes a snapshot on call.started, which
+  // needs the orchestrator to have created that call's state first, and bus
+  // listeners run in the order they were registered.
+  const orchestrator = createOrchestrator(bus);
+  const dashboardFeed = createDashboardFeed(bus, orchestrator);
+
+  // Call history for the dashboard's History tab, held in memory until MongoDB.
+  const eventStore = createMemoryEventStore(bus);
+  app.use(eventStore.router);
+
   // Dev-only place to read a call back after hanging up. Replaced by the event
   // store (§3.9) when Workstream E lands; TRANSCRIPT_LOG=0 turns it off.
   const transcriptLogDir = process.env.TRANSCRIPT_LOG_DIR || "logs/calls";
@@ -68,14 +81,26 @@ function main(): void {
     console.log(`[${tag}] ${e.speaker.padEnd(6)} @${at.padStart(7)}  ${e.text}`);
   });
 
+  // Score movement worth seeing in the terminal; per-second decay is left out.
+  bus.subscribe("score.updated", (e) => {
+    if (e.source === "decay") return;
+    console.log(`[SCORE] ${String(e.score).padStart(3)} ${e.level.padEnd(8)} (${e.source}) ${e.reason}`);
+  });
+  bus.subscribe("alert.triggered", (e) => {
+    console.log(`[ALERT] risk ${e.score} >= ${e.threshold}: ${e.reason}`);
+  });
+
   const server = http.createServer(app);
 
-  // One HTTP server, several WebSocket paths (the call socket now, the dashboard
-  // feed when Workstream D lands), so upgrades are routed by pathname here.
+  // One HTTP server, several WebSocket paths, so upgrades are routed by pathname.
   server.on("upgrade", (req, socket, head) => {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     if (pathname === WEBRTC_WS_PATH) {
       ingestion.handleUpgrade(req, socket, head);
+      return;
+    }
+    if (pathname === serverCfg.dashboardWsPath) {
+      dashboardFeed.handleUpgrade(req, socket, head);
       return;
     }
     console.warn(`[server] rejected WebSocket upgrade for ${pathname}`);
@@ -94,14 +119,29 @@ function main(): void {
       `[server] capture: ${webrtcCfg.encoding} @ ${webrtcCfg.sampleRate}Hz, ` +
         `attribution gate ${webrtcCfg.gate.enabled ? "on" : "off"}`
     );
+    console.log(`[server] dashboard feed on ${serverCfg.dashboardWsPath}, call history on /api/calls`);
     console.log("");
-    console.log("Open one link per person, on separate devices, wearing earbuds:");
-    console.log(`  caller: ${base}${CALL_PAGE_PATH}/?room=demo&role=caller${secretParam}`);
-    console.log(`  victim: ${base}${CALL_PAGE_PATH}/?room=demo&role=victim${secretParam}`);
-    if (!serverCfg.publicBaseUrl) {
-      console.log("");
-      console.log("PUBLIC_BASE_URL is unset, so these are localhost links. A second device");
-      console.log("needs an https tunnel — getUserMedia refuses a plain http LAN address.");
+    console.log("Guardian dashboard (separate terminal): npm run dev --workspace=@guardian-loop/dashboard");
+    console.log("  then open http://localhost:5173");
+    console.log("");
+    // Localhost links always work on this machine, since localhost counts as a secure
+    // context for the microphone. The public links only work while the tunnel runs,
+    // and opening them without it just shows the tunnel's "offline" error page.
+    const local = `http://localhost:${serverCfg.port}`;
+    const link = (origin: string, role: string) =>
+      `${origin}${CALL_PAGE_PATH}/?room=demo&role=${role}${secretParam}`;
+
+    console.log("Call links — one per person, wear headphones or earbuds:");
+    console.log("  On THIS computer (always works):");
+    console.log(`    caller: ${link(local, "caller")}`);
+    console.log(`    victim: ${link(local, "victim")}`);
+    if (serverCfg.publicBaseUrl) {
+      console.log("  On OTHER devices (only while the tunnel is running):");
+      console.log(`    caller: ${link(base, "caller")}`);
+      console.log(`    victim: ${link(base, "victim")}`);
+    } else {
+      console.log("  Other devices need an https tunnel and PUBLIC_BASE_URL set — the");
+      console.log("  microphone is blocked on a plain http LAN address.");
     }
     console.log("");
   });
@@ -112,6 +152,9 @@ function main(): void {
     shuttingDown = true;
     console.log(`\n[server] ${signal} — shutting down`);
     ingestion.close();
+    dashboardFeed.close();
+    orchestrator.stop();
+    eventStore.stop();
     bridge.stop();
     transcriptLog?.stop();
     void bridge.closeAll().finally(() => {

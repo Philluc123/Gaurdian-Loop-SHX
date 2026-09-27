@@ -2,6 +2,14 @@
 
 **Workstream:** E. Plumbing
 **Contract:** [`docs/module-contracts.md`](../../../../docs/module-contracts.md) §3.9
+**Status:** an **in-memory** version (`memory.ts`) is running and serves both endpoints,
+so the dashboard's History tab works with no database. MongoDB is not built.
+
+The in-memory store applies the same storage rules as below and serves the same two
+endpoints, so a Mongo version replaces it without the dashboard noticing. Until then,
+history lasts as long as the server process — enough for a demo. It keeps the 50 most
+recent calls. Empty final `rules.hits` are skipped as well, since they'd be a row per
+sentence carrying nothing.
 
 ## Owns
 

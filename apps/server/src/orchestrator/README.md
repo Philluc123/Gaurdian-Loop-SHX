@@ -2,6 +2,30 @@
 
 **Workstream:** B. Core
 **Contract:** [`docs/module-contracts.md`](../../../../docs/module-contracts.md) §3.3
+**Status:** rules → score → dashboard is built and running (M1, M2). Still to wire in:
+the LLM trigger policy (M4) and the alerts module (M3).
+
+## What's built
+
+| File | Does |
+|---|---|
+| `index.ts` | per-call state; transcript → `runRules` → `rules.hits` → `updateScore` → `score.updated` / `alert.triggered`; one 1s decay tick for all live calls |
+| `dashboard-feed.ts` | `/ws/dashboard` (§3.8): snapshot on subscribe and on call start, then transcript / highlights / score / alert / call_ended for the followed call |
+
+Checked against the transcript fixtures: both scam calls cross the threshold and alert
+exactly once; the legitimate family check-in stays below it with no alert.
+
+**Wiring order matters.** Create the orchestrator before the dashboard feed. Bus
+listeners run in registration order, and the snapshot the feed pushes on `call.started`
+needs the orchestrator to have created that call's state first.
+
+Rules run on **partial** transcripts too, and `rules.hits` is published for every
+transcript even when empty: partial hits drive live highlighting, an empty one clears
+highlights an earlier partial put up, and only final hits move the score (the score
+engine enforces that).
+
+An ended call keeps accepting finals, because the STT adapter flushes the last words
+just after hangup. It stops decaying.
 
 ## Owns
 
