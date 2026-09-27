@@ -199,3 +199,43 @@ describe("orchestrator: state for the dashboard", () => {
     small.stop();
   });
 });
+
+describe("orchestrator: guardian notification (M3)", () => {
+  it("hands each alert and the call's guardian to sendAlert, then publishes alert.sent", async () => {
+    const sendAlert = vi.fn(async (alert: AlertTriggered) => ({
+      type: "alert.sent" as const, callId: alert.callId, alertId: alert.alertId,
+      channel: "notification" as const, status: "sent" as const, ts: 1,
+    }));
+    const withAlerts = createOrchestrator(bus, { sendAlert });
+    // Replace the default orchestrator so only one handles the call.
+    orchestrator.stop();
+    orchestrator = withAlerts;
+
+    startCall("c1");
+    play(fixture("gift-card-medicare-scam", "c1"));
+    await vi.runAllTicks();
+    await Promise.resolve();
+
+    const alert = (ofType("alert.triggered") as AlertTriggered[])[0];
+    expect(sendAlert).toHaveBeenCalledTimes(1);
+    expect(sendAlert).toHaveBeenCalledWith(alert, guardian);
+    expect(ofType("alert.sent")).toEqual([
+      expect.objectContaining({ alertId: alert.alertId, status: "sent" }),
+    ]);
+  });
+
+  it("survives a sendAlert that rejects, instead of crashing the server", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    orchestrator.stop();
+    orchestrator = createOrchestrator(bus, { sendAlert: () => Promise.reject(new Error("boom")) });
+
+    startCall("c1");
+    play(fixture("gift-card-medicare-scam", "c1"));
+    await vi.runAllTicks();
+    await Promise.resolve();
+
+    expect(ofType("alert.triggered")).toHaveLength(1);
+    expect(ofType("alert.sent")).toHaveLength(0);
+    expect(error).toHaveBeenCalled();
+  });
+});

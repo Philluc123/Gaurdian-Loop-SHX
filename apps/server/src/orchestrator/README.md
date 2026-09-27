@@ -2,15 +2,16 @@
 
 **Workstream:** B. Core
 **Contract:** [`docs/module-contracts.md`](../../../../docs/module-contracts.md) §3.3
-**Status:** rules → score → dashboard is built and running (M1, M2). Still to wire in:
-the LLM trigger policy (M4) and the alerts module (M3).
+**Status:** rules → score → dashboard → guardian notification is built and running
+(M1–M3). Still to wire in: the LLM trigger policy (M4).
 
 ## What's built
 
 | File | Does |
 |---|---|
 | `index.ts` | per-call state; transcript → `runRules` → `rules.hits` → `updateScore` → `score.updated` / `alert.triggered`; one 1s decay tick for all live calls |
-| `dashboard-feed.ts` | `/ws/dashboard` (§3.8): snapshot on subscribe and on call start, then transcript / highlights / score / alert / call_ended for the followed call |
+| `dashboard-feed.ts` | `/ws/dashboard` (§3.8): snapshot on subscribe and on call start, then transcript / highlights / score / alert / call_ended for the followed call; `notify()` reaches every dashboard |
+| `dashboard-alerts.ts` | the alerts module's notification provider (M3): delivers its notification through the feed, and fails honestly when no guardian dashboard is connected |
 
 Checked against the transcript fixtures: both scam calls cross the threshold and alert
 exactly once; the legitimate family check-in stays below it with no alert.

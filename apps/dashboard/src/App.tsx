@@ -1,5 +1,6 @@
 import { CallHistory } from "./components/CallHistory";
 import { LiveCall } from "./components/LiveCall";
+import { useAlertNotifications, type AlertPermission } from "./notifications";
 import { Link, useRoute } from "./router";
 import { useDashboard, type ConnectionStatus, type Subscription } from "./ws-client";
 
@@ -11,6 +12,8 @@ const STATUS_TEXT: Record<ConnectionStatus, string> = {
 
 export function App() {
   const route = useRoute();
+  // App-level, not per page, so the guardian is notified on every route.
+  const alerts = useAlertNotifications();
   return (
     <div className="app">
       <header className="topbar">
@@ -18,6 +21,7 @@ export function App() {
           Guardian Loop
         </Link>
         <nav>
+          <AlertToggle permission={alerts.permission} onEnable={alerts.request} />
           <Link to="/" className={route.name === "live" ? "nav active" : "nav"}>
             Live
           </Link>
@@ -30,6 +34,34 @@ export function App() {
         {route.name === "live" ? <LivePage subscription={route.callId} /> : <CallHistory selected={route.callId} />}
       </main>
     </div>
+  );
+}
+
+/**
+ * Browser notifications need a one-time permission, which browsers only let a
+ * click ask for. A denied permission can't be re-prompted from the page, so that
+ * state says where to fix it instead of showing a button that does nothing.
+ */
+function AlertToggle({ permission, onEnable }: { permission: AlertPermission; onEnable: () => void }) {
+  if (permission === "unsupported") return null;
+  if (permission === "granted") {
+    return (
+      <span className="alert-toggle alert-toggle-on" title="Scam alerts will appear as notifications">
+        🔔 Alerts on
+      </span>
+    );
+  }
+  if (permission === "denied") {
+    return (
+      <span className="alert-toggle alert-toggle-denied" title="Allow notifications for this site in the browser's site settings">
+        🔕 Alerts blocked
+      </span>
+    );
+  }
+  return (
+    <button type="button" className="btn btn-primary alert-toggle" onClick={onEnable}>
+      🔔 Enable alerts
+    </button>
   );
 }
 

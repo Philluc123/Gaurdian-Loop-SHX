@@ -14,8 +14,15 @@ import type { Orchestrator } from "./index";
 
 type Subscription = CallId | "latest";
 
+export type DashboardNotification = Extract<ServerMsg, { type: "notification" }>;
+
 export interface DashboardFeed {
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void;
+  /**
+   * Push a guardian notification to every connected dashboard, whichever call it
+   * follows. Returns how many received it — 0 means no guardian is watching.
+   */
+  notify(notification: DashboardNotification): number;
   readonly clientCount: number;
   close(): void;
 }
@@ -113,6 +120,15 @@ export function createDashboardFeed(bus: EventBus, orchestrator: Orchestrator): 
   return {
     handleUpgrade(req, socket, head) {
       wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+    },
+    notify(notification) {
+      let delivered = 0;
+      for (const ws of subscriptions.keys()) {
+        if (ws.readyState !== ws.OPEN) continue;
+        send(ws, notification);
+        delivered += 1;
+      }
+      return delivered;
     },
     get clientCount() {
       return subscriptions.size;

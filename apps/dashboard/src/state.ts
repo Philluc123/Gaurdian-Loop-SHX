@@ -115,6 +115,11 @@ export function reduce(state: DashboardState, msg: ServerMsg, now: number): Dash
     case "call_ended":
       if (msg.callId !== call.callId) return state;
       return { call: { ...call, endedAt: msg.ts } };
+
+    case "notification":
+      // A one-off action, not view state: notifications.ts raises it. The alert it
+      // announces arrives separately as an `alert` message, which the banner shows.
+      return state;
   }
 }
 

@@ -19,12 +19,13 @@ import { bus } from "./event-bus";
 import { createWebRtcIngestion } from "./call-ingestion/webrtc";
 import { createMemoryEventStore } from "./event-store/memory";
 import { createOrchestrator } from "./orchestrator";
-import { createDashboardFeed } from "./orchestrator/dashboard-feed";
+import { createDashboardAlerter } from "./orchestrator/dashboard-alerts";
+import { createDashboardFeed, type DashboardFeed } from "./orchestrator/dashboard-feed";
 import { createSttAdapter, createSttBridge } from "./stt-adapters";
 import { createTranscriptLog } from "./transcript-log";
 
-// TODO: the LLM trigger policy (M4) and the alerts module (M3) register through the
-// orchestrator as they're wired in.
+// TODO: the LLM trigger policy (M4) registers through the orchestrator when it's
+// wired in.
 
 function main(): void {
   const serverCfg = loadServerConfig();
@@ -55,8 +56,15 @@ function main(): void {
   // Order matters: the dashboard feed pushes a snapshot on call.started, which
   // needs the orchestrator to have created that call's state first, and bus
   // listeners run in the order they were registered.
-  const orchestrator = createOrchestrator(bus);
+  //
+  // Guardian notifications go out through the dashboard feed, which doesn't exist
+  // yet when the orchestrator is built — hence the getter, resolved at send time.
+  let feedForAlerts: DashboardFeed | undefined;
+  const orchestrator = createOrchestrator(bus, {
+    sendAlert: createDashboardAlerter(() => feedForAlerts),
+  });
   const dashboardFeed = createDashboardFeed(bus, orchestrator);
+  feedForAlerts = dashboardFeed;
 
   // Call history for the dashboard's History tab, held in memory until MongoDB.
   const eventStore = createMemoryEventStore(bus);
@@ -88,6 +96,9 @@ function main(): void {
   });
   bus.subscribe("alert.triggered", (e) => {
     console.log(`[ALERT] risk ${e.score} >= ${e.threshold}: ${e.reason}`);
+  });
+  bus.subscribe("alert.sent", (e) => {
+    console.log(`[ALERT] guardian notification ${e.status}${e.error ? `: ${e.error}` : ""}`);
   });
 
   const server = http.createServer(app);

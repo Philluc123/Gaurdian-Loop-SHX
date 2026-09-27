@@ -229,7 +229,20 @@ export type ServerMsg =
   | { type: "highlights"; segmentId: string; isFinal: boolean; spans: HighlightSpan[] }
   | { type: "score"; event: ScoreUpdated }
   | { type: "alert"; event: AlertTriggered; delivery?: AlertSent["status"] }
-  | { type: "call_ended"; callId: CallId; ts: number };
+  | { type: "call_ended"; callId: CallId; ts: number }
+  // The guardian notification itself (§3.7): the alerts module's template output,
+  // delivered to every connected dashboard whatever call it follows, so the
+  // guardian is reached even on the History page. The dashboard raises it as a
+  // browser notification; `alertId` doubles as the notification tag, so a retry
+  // or a second open tab replaces it rather than stacking a duplicate.
+  | {
+      type: "notification";
+      callId: CallId;
+      alertId: string;
+      title: string;
+      body: string;
+      url?: string;
+    };
 
 // --- Call history REST (docs/module-contracts.md sections 3.8, 3.9) ---
 

@@ -159,3 +159,26 @@ describe("dashboard feed", () => {
     expect(types(msgs)).toContain("snapshot");
   });
 });
+
+describe("dashboard feed: guardian notifications (M3)", () => {
+  const notification = {
+    type: "notification" as const, callId: "c1", alertId: "c1:alert:1",
+    title: "⚠️ Possible scam call (risk 82)", body: "Why: secrecy request.",
+  };
+
+  it("reaches every connected dashboard, whatever call it follows", async () => {
+    await publish(start("c1"));
+    const following = await connect({ type: "subscribe", callId: "latest" });
+    const pinnedElsewhere = await connect({ type: "subscribe", callId: "some-other-call" });
+
+    expect(feed.notify(notification)).toBe(2);
+    await settle();
+    for (const client of [following, pinnedElsewhere]) {
+      expect(client.msgs.at(-1)).toEqual(notification);
+    }
+  });
+
+  it("reports zero recipients when no dashboard is open", () => {
+    expect(feed.notify(notification)).toBe(0);
+  });
+});

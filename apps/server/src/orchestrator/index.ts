@@ -7,10 +7,14 @@
 //   transcript ──runRules──▶ rules.hits ──updateScore──▶ score.updated / alert.triggered
 //   1s tick ────────────────────────────updateScore──▶ score.updated (decay)
 //
-// Not here yet: the LLM trigger policy (M4) and calling the alerts module (M3).
-// Both slot into this file without changing what it already publishes.
+// On alert.triggered it hands the alert and the call's guardian to `sendAlert` and
+// publishes the `alert.sent` that comes back (§3.3, §3.7).
+//
+// Not here yet: the LLM trigger policy (M4). It slots into this file without
+// changing what it already publishes.
 
 import type {
+  AlertSent,
   AlertTriggered,
   CallId,
   CallStarted,
@@ -46,6 +50,12 @@ export interface OrchestratorOptions {
   /** Finished calls kept in memory for late dashboard subscribers. */
   maxEndedCalls?: number;
   now?: () => number;
+  /**
+   * Notifies the guardian of an alert. Must never reject — the alerts module
+   * resolves every failure as `status: "failed"`. Omitted in tests that don't
+   * exercise alerting, in which case no `alert.sent` is published.
+   */
+  sendAlert?: (alert: AlertTriggered, guardian: Guardian) => Promise<AlertSent>;
 }
 
 export interface Orchestrator {
@@ -78,7 +88,21 @@ export function createOrchestrator(bus: EventBus, opts: OrchestratorOptions = {}
     for (const event of events) {
       if (event.type === "alert.triggered") call.alerts.push(event);
       bus.publish(event);
+      if (event.type === "alert.triggered") notifyGuardian(call, event);
     }
+  }
+
+  /** Fire-and-forget: a slow notification provider must never stall the call. */
+  function notifyGuardian(call: CallState, alert: AlertTriggered): void {
+    if (!opts.sendAlert) return;
+    opts
+      .sendAlert(alert, call.guardian)
+      .then((sent) => bus.publish(sent))
+      .catch((err) => {
+        // The alerts module promises never to reject; guard anyway so a bug there
+        // can't become an unhandled rejection that takes the server down.
+        console.error(`[orchestrator] sendAlert rejected for ${alert.alertId}:`, err);
+      });
   }
 
   function onCallStarted(event: CallStarted): void {

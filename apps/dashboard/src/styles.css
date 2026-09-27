@@ -239,3 +239,10 @@ nav { display: flex; gap: 4px; }
 .record-events { margin-top: 20px; font-size: 13px; color: var(--ink-2); }
 .record-events summary { cursor: pointer; }
 .record-events ol { margin: 8px 0 0; padding-left: 20px; max-height: 280px; overflow-y: auto; }
+
+/* Guardian alert permission toggle (top bar). */
+.topbar nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.alert-toggle { margin-right: 8px; font-size: 13px; }
+span.alert-toggle { padding: 6px 10px; border-radius: 8px; font-weight: 600; }
+.alert-toggle-on { background: var(--good-tint); color: var(--good-ink); }
+.alert-toggle-denied { background: var(--warning-tint); color: var(--warning-ink); cursor: help; }

@@ -431,6 +431,15 @@ Body:  "Buy the gift cards and don't tell your daughter."
 Tap:   https://<host>/call/<callId>
 ```
 
+**Provider (current):** the guardian's dashboard. The alerts module builds the
+notification and hands it to its pluggable `send`; the server's provider delivers it
+over the dashboard WebSocket as a `notification` message (§3.8), and the dashboard
+raises it as a browser notification. `status: "sent"` means at least one guardian
+dashboard was connected to receive it; with none connected the alert is `failed`
+("no guardian dashboard connected"), because nobody was reached. The guardian grants
+notification permission once via the dashboard's "Enable alerts" button. A phone push
+provider can replace this later without changing the module or the events.
+
 **Done when:** a manual `alert.triggered` sends a notification to a test guardian's
 device and emits `alert.sent`.
 
@@ -465,7 +474,10 @@ type ServerMsg =
       spans: Array<{ start: number; end: number; signal: Signal }> }
   | { type: "score"; event: ScoreUpdated }
   | { type: "alert"; event: AlertTriggered; delivery?: AlertSent["status"] }
-  | { type: "call_ended"; callId: CallId; ts: number };
+  | { type: "call_ended"; callId: CallId; ts: number }
+  | { type: "notification"; callId: CallId; alertId: string;     // guardian notification (§3.7):
+      title: string; body: string; url?: string };               //   sent to EVERY dashboard,
+                                                                  //   whatever call it follows
 ```
 
 Send `snapshot` on every subscribe or reconnect, so a refreshed page recovers the
