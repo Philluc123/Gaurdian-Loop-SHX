@@ -1,0 +1,26 @@
+# Dialogue script for scripts/make-fixture-audio.ts.
+#   caller: <text>   spoken by the scammer (Twilio inbound track)
+#   victim: <text>   spoken by the person being called (outbound / <Dial> track)
+#   pause: <ms>      silence on both tracks
+#
+# Rendered with Windows TTS, so this is synthetic audio at 8kHz — good enough to
+# prove the pipeline works end to end, not a substitute for a real test call.
+#
+# Scenario: Medicare impersonation into a gift-card payment request, with a
+# secrecy ask. Hits IMPERSONATION, URGENCY, UNTRACEABLE_PAYMENT, SECRECY and
+# VICTIM_COMPLIANCE, so the rules classifier and score engine can use it too.
+
+caller: Hello, am I speaking with the account holder? This is Officer Daniels from the Medicare benefits department.
+victim: Yes, this is she. What is this about?
+caller: Ma'am, your Medicare account has been suspended due to fraudulent billing activity detected this morning.
+victim: Oh my goodness. I haven't done anything wrong.
+pause: 400
+caller: I understand. To reinstate your benefits today you need to verify the account with a one time payment of four hundred dollars.
+victim: Four hundred dollars? I don't understand why.
+caller: It is a refundable verification deposit. You must go to the pharmacy and purchase four gift cards of one hundred dollars each, then read me the numbers on the back.
+victim: Gift cards? That sounds unusual for a government office.
+caller: It is the only payment method our secure system accepts. And please do not discuss this with your daughter or anyone else, the investigation is confidential.
+pause: 600
+victim: Okay. I suppose I can drive to the pharmacy now.
+caller: Good. Stay on the line with me the entire time and do not hang up. If you hang up the case goes to the federal courts.
+victim: All right, let me get my purse and my car keys.

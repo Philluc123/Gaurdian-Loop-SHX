@@ -15,7 +15,7 @@ events it needs and publishes its own.
 
 ```mermaid
 flowchart LR
-  TW[Call ingestion<br/>Twilio / WebRTC] -- audio.frame --> STT[STT adapter]
+  TW[Call ingestion<br/>browser WebRTC] -- audio.frame --> STT[STT adapter]
   TW -- call.started / call.ended --> ORC
   STT -- transcript --> ORC[Orchestrator<br/>call state]
   ORC -- segment --> RUL[Rules classifier]
@@ -25,7 +25,7 @@ flowchart LR
   ORC -- rules.hits / llm.result / tick --> SCO[Score engine]
   SCO -- score.updated / alert.triggered --> ORC
   ORC -- WebSocket messages --> DASH[Guardian dashboard]
-  ORC -- alert.triggered --> ALR[Alerts / SMS]
+  ORC -- alert.triggered --> ALR[Alerts / guardian notification]
   ALR -- alert.sent --> ORC
   ORC -- all events --> DB[(Event store<br/>MongoDB)]
 ```
@@ -41,7 +41,7 @@ which makes them easy to build and test in isolation.
 Everyone imports from this package. Nobody redefines these locally.
 
 ```ts
-export type CallId = string;              // Twilio CallSid, or a UUID for WebRTC calls
+export type CallId = string;              // a UUID per call
 export type Speaker = "caller" | "victim";
 
 export type Signal =
@@ -69,17 +69,43 @@ export interface Turn {                   // one committed (final) utterance
 - All scores are integers from 0 to 100.
 - Every event carries `callId`.
 
+**The event bus's type map**
+
+`shared-types` also exports `GuardianEventMap`, which maps each event's `type` literal
+to its payload. The bus is typed against it, so publishing an event that isn't in the
+map is a compile error:
+
+```ts
+export interface GuardianEventMap {
+  "call.started": CallStarted;
+  "audio.frame": AudioFrame;
+  "call.ended": CallEnded;
+  transcript: TranscriptEvent;
+  // each workstream adds its own events here as they land
+}
+```
+
+When you add an event to section 3 below, add it to this map in the same PR, or no
+module will be able to subscribe to it.
+
 ---
 
 ## 3. Module contracts
 
-### 3.1 Call ingestion (Twilio Voice + Media Streams, WebRTC fallback)
+### 3.1 Call ingestion (browser WebRTC)
 
-**Owns:** the Twilio webhook (TwiML), the Media Streams WebSocket, the WebRTC
-fallback page.
+> **Changed:** Twilio has been dropped from the project. Browser WebRTC is now the
+> only ingestion path, not a fallback. `CallStarted.source` keeps `"twilio"` in the
+> union so stored events from earlier testing still typecheck.
 
-**Input:** Twilio webhooks and Media Streams messages (or browser microphone audio
-for the fallback).
+**Owns:** the WebRTC signalling server, the browser call page, the audio fork that
+carries each participant's own microphone to the server, and the speaker-attribution
+gate.
+
+**Input:** two browsers (caller and victim), each capturing its own microphone.
+The two peers connect to each other over `RTCPeerConnection` so the participants can
+hear one another; separately, each browser forks a copy of **its own** mic to the
+server, which is where the three events below come from.
 
 **Output events:**
 
@@ -87,9 +113,9 @@ for the fallback).
 interface CallStarted {
   type: "call.started";
   callId: CallId;
-  source: "twilio" | "webrtc";
-  from?: string;                          // caller's number, if known
-  to?: string;                            // victim's number
+  source: "twilio" | "webrtc";            // always "webrtc" now
+  from?: string;                          // display label, not a phone number
+  to?: string;
   guardian: Guardian;                     // hard-coded config for the demo
   ts: number;
 }
@@ -97,7 +123,7 @@ interface CallStarted {
 interface AudioFrame {
   type: "audio.frame";
   callId: CallId;
-  speaker: Speaker;                       // mapped from Twilio's inbound/outbound track
+  speaker: Speaker;                       // from the joining role, not guessed
   encoding: "mulaw" | "pcm16";
   sampleRate: 8000 | 16000;
   payload: string;                        // base64 audio, ~20 ms per frame
@@ -113,9 +139,21 @@ interface CallEnded {
 }
 ```
 
-**Done when:** a test call produces `call.started`, a steady stream of `audio.frame`
-for both speakers (verify which Twilio track is the caller), and `call.ended`. The
-WebRTC fallback must emit exactly the same events.
+**Capture format:** `pcm16` at 16 kHz by default. The 8 kHz mu-law option remains
+because real scam calls arrive over a phone codec, and it is worth knowing what that
+costs in accuracy — but nothing in the demo path needs it.
+
+**Speaker attribution:** the demo has both participants in one room, so each
+microphone hears both people. Each browser applies `echoCancellation` and
+`noiseSuppression` with `autoGainControl` **off** (AGC raises gain during your
+silence, which amplifies the other person). The server then runs a gating automixer:
+per 20 ms frame it compares both tracks' RMS and silences the quieter one while the
+other is clearly dominant, with a hangover so words are not clipped. Participants
+wear close-talking earbud mics, which is what makes the level difference reliable.
+
+**Done when:** two browsers produce `call.started`, a steady stream of `audio.frame`
+for both speakers, and `call.ended`; and a conversation held in one room yields
+transcripts where each turn is attributed to the right speaker.
 
 ---
 
@@ -355,11 +393,20 @@ crossing.
 
 ---
 
-### 3.7 Alerts (Twilio SMS)
+### 3.7 Alerts (guardian notification)
 
-**Owns:** the SMS template, sending, and delivery status.
+> **Changed:** Twilio has been dropped, so there is no SMS channel. The guardian is
+> notified in the dashboard instead. The `alert.triggered` contract from §3.6 is
+> unchanged — only delivery differs.
+
+**Owns:** delivering an alert to the guardian and reporting whether it landed.
 
 **Input:** `alert.triggered` plus the call's `Guardian`.
+
+**Delivery:** a browser notification raised by the guardian's dashboard (the
+`Notification` API), alongside the in-page risk meter. The dashboard receives the
+alert over its existing WebSocket as a `ServerMsg` of type `alert` (§3.8); the
+notification is the dashboard's rendering of it.
 
 **Output event:**
 
@@ -368,25 +415,24 @@ interface AlertSent {
   type: "alert.sent";
   callId: CallId;
   alertId: string;
-  channel: "sms";
-  status: "sent" | "failed";
-  providerId?: string;                    // Twilio message SID
+  channel: "browser";                     // was "sms"
+  status: "sent" | "failed";              // failed = no dashboard subscribed
   error?: string;
   ts: number;
 }
 ```
 
-**SMS format (keep under ~300 characters):**
+**Notification content (keep it glanceable):**
 
 ```
-⚠️ Guardian Loop: possible scam call (risk 82).
+⚠️ Possible scam call — risk 82
 "Buy the gift cards and don't tell your daughter."
 Why: payment in gift cards + secrecy request.
-Live view: https://<host>/call/<callId>
 ```
 
-**Done when:** a manual `alert.triggered` sends a text to a verified number and
-emits `alert.sent`.
+**Done when:** a manual `alert.triggered` raises a notification on a subscribed
+dashboard and emits `alert.sent`. If no dashboard is connected, `alert.sent` reports
+`failed` rather than silently dropping — the guardian was not actually reached.
 
 ---
 
@@ -469,7 +515,7 @@ addition is a post-session summary built from the stored events.
 
 ## 5. Working in parallel: fixtures and mocks
 
-These let every workstream start immediately, without waiting for Twilio or a vendor.
+These let every workstream start immediately, without waiting on another module or a vendor.
 
 | Tool | What it is | Who uses it |
 |---|---|---|
@@ -498,9 +544,9 @@ and the LLM prompt.
 
 1. Fixture replay → rules → score → dashboard (no vendors).
 2. Swap replay for live STT on recorded audio.
-3. Swap recorded audio for a live Twilio call.
+3. Swap recorded audio for a live two-browser WebRTC call.
 4. Replace the mock LLM with Gemini.
-5. Turn on SMS alerts and MongoDB writes.
+5. Turn on guardian notifications and MongoDB writes.
 
 Each milestone swaps one mock for the real thing, so when something breaks, you know
 exactly which module caused it.

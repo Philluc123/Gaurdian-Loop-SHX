@@ -1,0 +1,12 @@
+0.0s caller Hello, am I speaking with the account holder? This is Officer Daniels from the Medicare benefits department.
+8.3s victim Yes, this is she. What is this about?
+13.2s caller Ma'am, your Medicare account has been suspended due to fraudulent billing activity detected this morning.
+20.3s victim Oh my goodness. I haven't done anything wrong.
+25.7s caller I understand. To reinstate your benefits today you need to verify the account with a one time payment of four hundred dollars.
+34.5s victim Four hundred dollars? I don't understand why.
+39.8s caller It is a refundable verification deposit. You must go to the pharmacy and purchase four gift cards of one hundred dollars each, then read me the numbers on the back.
+50.8s victim Gift cards? That sounds unusual for a government office.
+56.6s caller It is the only payment method our secure system accepts. And please do not discuss this with your daughter or anyone else, the investigation is confidential.
+68.1s victim Okay. I suppose I can drive to the pharmacy now.
+73.4s caller Good. Stay on the line with me the entire time and do not hang up. If you hang up the case goes to the federal courts.
+82.6s victim All right, let me get my purse and my car keys.

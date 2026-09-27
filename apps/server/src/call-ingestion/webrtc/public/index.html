@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Guardian Loop — Call</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1115;
+        --panel: #181b22;
+        --border: #2a2f3a;
+        --text: #e8eaed;
+        --muted: #9aa3b2;
+        --accent: #5b9dff;
+        --caller: #ff8f6b;
+        --victim: #6bd6a0;
+        --danger: #ff6b6b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { width: 100%; max-width: 420px; }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px;
+      }
+      h1 { margin: 0 0 4px; font-size: 20px; }
+      .sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+      label { display: block; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
+      input, select, button {
+        width: 100%;
+        margin-top: 6px;
+        padding: 11px 12px;
+        font: inherit;
+        color: var(--text);
+        background: #11141a;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+      }
+      button {
+        margin-top: 0;
+        background: var(--accent);
+        border-color: transparent;
+        color: #06101f;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary { background: #222734; color: var(--text); }
+      button[data-muted="true"] { background: var(--danger); color: #fff; }
+      button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+      .badges { display: flex; gap: 8px; align-items: center; margin-bottom: 18px; }
+      .badge {
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        background: #222734;
+      }
+      .badge[data-role="caller"] { background: var(--caller); color: #2b1004; }
+      .badge[data-role="victim"] { background: var(--victim); color: #052a1a; }
+      .rows { display: grid; gap: 10px; margin-bottom: 18px; font-size: 14px; }
+      .row { display: flex; justify-content: space-between; gap: 12px; }
+      .row span:first-child { color: var(--muted); }
+      #gate-status[data-suppressed="true"] { color: var(--danger); font-weight: 600; }
+      .meter {
+        height: 8px;
+        border-radius: 999px;
+        background: #11141a;
+        overflow: hidden;
+        margin-bottom: 18px;
+      }
+      #meter-fill { height: 100%; width: 0%; background: var(--accent); transition: width 80ms linear; }
+      .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      #error {
+        margin-top: 16px;
+        padding: 12px;
+        border: 1px solid var(--danger);
+        border-radius: 9px;
+        color: var(--danger);
+        font-size: 14px;
+      }
+      .hint { margin-top: 16px; color: var(--muted); font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <!-- Join screen, shown when the URL has no room/role. -->
+      <section id="join" class="panel" hidden>
+        <h1>Join a call</h1>
+        <p class="sub">Two people, two devices, one room name.</p>
+        <form id="join-form">
+          <label>
+            Room
+            <input id="room-input" value="demo" required autocomplete="off" />
+          </label>
+          <label>
+            I am the
+            <select id="role-input">
+              <option value="caller">caller (the scammer)</option>
+              <option value="victim">victim (the person called)</option>
+            </select>
+          </label>
+          <label>
+            Room secret
+            <input id="secret-input" type="password" autocomplete="off" />
+          </label>
+          <button type="submit">Join</button>
+        </form>
+        <p class="hint">
+          Wear earbuds. Two open microphones in one room hear each other, and earbuds
+          are what keep each voice on its own track.
+        </p>
+      </section>
+
+      <!-- Live call. -->
+      <section id="live" class="panel" hidden>
+        <div class="badges">
+          <span class="badge" id="role-badge">—</span>
+          <span class="badge" id="room-badge">—</span>
+        </div>
+        <div class="rows">
+          <div class="row"><span>Connection</span><span id="status">…</span></div>
+          <div class="row"><span>Other person</span><span id="peer-status">—</span></div>
+          <div class="row"><span>Your audio</span><span id="gate-status">live</span></div>
+        </div>
+        <div class="meter"><div id="meter-fill"></div></div>
+        <div class="actions">
+          <button id="mute" class="secondary" type="button">Mute</button>
+          <button id="hangup" class="danger" type="button">Hang up</button>
+        </div>
+        <p class="hint">
+          "Gated" means the server judged the other person clearly louder and muted
+          this track to keep the transcripts separate.
+        </p>
+        <audio id="remote-audio" autoplay playsinline></audio>
+      </section>
+
+      <p id="error" hidden></p>
+    </main>
+
+    <script src="call.js"></script>
+  </body>
+</html>
