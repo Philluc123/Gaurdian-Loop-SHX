@@ -2,19 +2,19 @@
 
 **Workstream:** A. Audio
 **Contract:** [`docs/module-contracts.md`](../../../../docs/module-contracts.md) §3.2
-**Status:** Deepgram implemented. ElevenLabs and Azure not started.
+**Status:** Deepgram, built and verified. It is the only vendor.
 
 ## Owns
 
-Vendor connections, reconnection, and translating vendor responses into one common
-`TranscriptEvent` format. Each vendor lives behind the same `SttAdapter` interface so
-switching vendors is a config change (`STT_PROVIDER` in `.env`), not a code change.
+The vendor connection, reconnection, and translating vendor responses into the common
+`TranscriptEvent` format. The vendor sits behind the `SttAdapter` interface, so nothing
+outside this folder knows it's Deepgram.
 
 ## Interface every adapter implements
 
 ```ts
 interface SttAdapter {
-  name: "elevenlabs" | "deepgram" | "azure";
+  name: "deepgram";
   openSession(callId: CallId, speaker: Speaker,
               onTranscript: (e: TranscriptEvent) => void): SttSession;
 }
@@ -27,7 +27,8 @@ interface SttSession {
 
 ## Input / output
 
-Input: `audio.frame` events, routed by `speaker` to one session per speaker.
+Input: `audio.frame` events. The orchestrator opens one session per speaker per call
+and routes frames by `speaker` (`../orchestrator/stt-sessions.ts`).
 Output: `TranscriptEvent` — partials share a `segmentId` until the final
 (`isFinal: true`) replaces them.
 
@@ -35,18 +36,11 @@ Output: `TranscriptEvent` — partials share a `segmentId` until the final
 
 ```
 stt-adapters/
-  index.ts          createSttAdapter(cfg) — picks the vendor from STT_PROVIDER
-  bridge.ts         routes audio.frame -> sessions, republishes transcripts
+  index.ts          createSttAdapter(cfg) — the adapter the service runs with
   deepgram/
     index.ts        the WebSocket: params, buffering, keepalive, reconnect, flush
     segments.ts     Deepgram messages -> TranscriptEvents; pure, unit-tested
-  elevenlabs/       not built yet
-  azure/            not built yet
 ```
-
-`bridge.ts` exists because §3.3 gives this routing to the orchestrator, which isn't
-built yet. When Workstream B lands, the orchestrator calls `openSession` itself and
-this file is deleted — no changes to the adapters or to call ingestion.
 
 ## How Deepgram is configured
 
@@ -94,10 +88,9 @@ formatted form. Turn it off in `buildQuery` if that's a problem.
 
 ## Done when
 
-Each adapter turns a recorded call (`fixtures/audio/*.wav`) into a clean sequence of
+The adapter turns a recorded call (`fixtures/audio/*.wav`) into a clean sequence of
 partials followed by one final per segment, and survives a dropped connection by
 reconnecting without dropping in-flight audio.
 
 **Deepgram: done** — verified end to end against generated fixture audio at
 mu-law 8kHz. Re-verify once browser capture lands, since the format changes.
-**Remaining:** ElevenLabs and Azure adapters, for the vendor comparison.

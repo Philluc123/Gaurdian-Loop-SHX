@@ -10,8 +10,10 @@ import type { LLMRequest } from "@guardian-loop/shared-types";
 import {
   buildUserPrompt,
   createClassifier,
+  describe as describeError,
   LLM_ERROR_REASON,
   parseLLMOutput,
+  thinkingConfigFor,
   type GenerateFn,
 } from "./index";
 
@@ -73,7 +75,7 @@ describe("classify", () => {
     expect(params.config?.responseMimeType).toBe("application/json");
     expect(params.config?.responseJsonSchema).toBeDefined();
     expect(params.config?.temperature).toBe(0);
-    expect(params.config?.thinkingConfig?.thinkingBudget).toBe(0);
+    expect(params.config?.thinkingConfig).toEqual({ thinkingLevel: "MINIMAL" });
     expect(params.config?.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
@@ -132,15 +134,42 @@ describe("classify", () => {
     expect(signal?.aborted).toBe(true);
   });
 
-  it("returns llm_error (not throws) when GEMINI_API_KEY is missing", async () => {
-    const saved = process.env.GEMINI_API_KEY;
-    delete process.env.GEMINI_API_KEY;
-    try {
-      const res = await createClassifier()(makeReq());
-      expect(res.reason).toBe(LLM_ERROR_REASON);
-    } finally {
-      if (saved !== undefined) process.env.GEMINI_API_KEY = saved;
-    }
+  it("returns llm_error (not throws) when no API key is configured", async () => {
+    const res = await createClassifier({ apiKey: "" })(makeReq());
+    expect(res.reason).toBe(LLM_ERROR_REASON);
+  });
+});
+
+describe("thinkingConfigFor", () => {
+  it("uses thinkingLevel on Gemini 3+, which rejects thinkingBudget", () => {
+    expect(thinkingConfigFor("gemini-3.5-flash-lite")).toEqual({ thinkingLevel: "MINIMAL" });
+  });
+
+  it("keeps thinkingBudget 0 on Gemini 2.x", () => {
+    expect(thinkingConfigFor("gemini-2.5-flash-lite")).toEqual({ thinkingBudget: 0 });
+  });
+});
+
+describe("error logging", () => {
+  // Shape of a real Gemini 403; the key here is a made-up placeholder.
+  const FAKE_KEY = "AIzaSyFAKE-fake_FAKEfakeFAKEfakeFAKEfake";
+  const body = JSON.stringify({
+    error: {
+      code: 403,
+      message: `Permission denied: Consumer 'api_key:${FAKE_KEY}' has been suspended.`,
+      status: "PERMISSION_DENIED",
+      details: [{ reason: "CONSUMER_SUSPENDED", metadata: { containerInfo: `api_key:${FAKE_KEY}` } }],
+    },
+  });
+
+  it("never logs the API key a Gemini error quotes back", () => {
+    const line = describeError(new Error(body));
+    expect(line).not.toContain(FAKE_KEY);
+    expect(line).toBe("403 PERMISSION_DENIED Permission denied: Consumer 'api_key:AIza…[redacted]' has been suspended.");
+  });
+
+  it("passes non-JSON errors through", () => {
+    expect(describeError(new Error("timeout after 3000ms"))).toBe("timeout after 3000ms");
   });
 });
 

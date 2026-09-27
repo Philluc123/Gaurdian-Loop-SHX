@@ -6,13 +6,26 @@
 
 import path from "node:path";
 import dotenv from "dotenv";
-import type { AudioFrame, Guardian, SttProvider } from "@guardian-loop/shared-types";
+import type { AudioFrame, Guardian } from "@guardian-loop/shared-types";
 
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+const envFile = dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+
+// dotenv never overwrites a variable that's already set, so a stale key in the
+// shell or the Windows user environment silently beats the one in .env. Say so
+// (names only, never values).
+const shadowed = Object.entries(envFile.parsed ?? {})
+  .filter(([name, value]) => value !== "" && process.env[name] !== value)
+  .map(([name]) => name);
+if (shadowed.length > 0) {
+  console.warn(
+    `[config] ${shadowed.join(", ")} in .env ${shadowed.length === 1 ? "is" : "are"} overridden by ` +
+      "a variable already set in the environment (shell or Windows user env). The .env value is ignored."
+  );
+}
 
 /**
  * Editors and hand-written .env files often leave a trailing comment on the
- * same line (`STT_PROVIDER=deepgram # deepgram | azure`). dotenv keeps that as
+ * same line (`DEEPGRAM_MODEL=nova-3 # or nova-2`). dotenv keeps that as
  * part of the value, which silently breaks string comparisons, so strip it.
  * Only strips when whitespace precedes the `#`, so values that legitimately
  * contain one (an API key, a URL fragment) survive.
@@ -93,17 +106,17 @@ export interface WebRtcConfig {
 }
 
 export interface SttConfig {
-  provider: SttProvider;
   deepgram: { apiKey: string; model: string };
 }
 
-function provider(name: string, fallback: SttProvider): SttProvider {
-  const value = str(name).toLowerCase();
-  if (value === "deepgram" || value === "elevenlabs" || value === "azure") return value;
-  if (value !== "") {
-    console.warn(`[config] ${name}="${value}" is not a known STT provider; using "${fallback}"`);
-  }
-  return fallback;
+export interface LlmConfig {
+  gemini: { apiKey: string; model: string };
+  /**
+   * Heartbeat: with new speech but no LLM call for this long, call it anyway. This
+   * is what catches a caller who never says a rule keyword — without rule hits,
+   * the heartbeat is the only thing that sends the conversation to the LLM.
+   */
+  heartbeatSec: number;
 }
 
 export function loadServerConfig(): ServerConfig {
@@ -146,11 +159,21 @@ export function loadGuardian(): Guardian {
 
 export function loadSttConfig(): SttConfig {
   return {
-    provider: provider("STT_PROVIDER", "deepgram"),
     deepgram: {
       apiKey: str("DEEPGRAM_API_KEY"),
       model: str("DEEPGRAM_MODEL", "nova-3"),
     },
+  };
+}
+
+export function loadLlmConfig(): LlmConfig {
+  return {
+    gemini: {
+      apiKey: str("GEMINI_API_KEY"),
+      model: str("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+    },
+    // 15s while testing; the contract's value is 30s. Set LLM_HEARTBEAT_SEC to override.
+    heartbeatSec: int("LLM_HEARTBEAT_SEC", 15),
   };
 }
 
@@ -159,15 +182,25 @@ export function loadSttConfig(): SttConfig {
  * harder to debug. Never throws — a missing Deepgram key should still let you
  * boot and exercise the call path.
  */
-export function warnAboutGaps(server: ServerConfig, stt: SttConfig, webrtc: WebRtcConfig): void {
+export function warnAboutGaps(
+  server: ServerConfig,
+  stt: SttConfig,
+  webrtc: WebRtcConfig,
+  llm: LlmConfig
+): void {
   if (!server.publicBaseUrl.startsWith("https://")) {
     console.warn(
       "[config] PUBLIC_BASE_URL is not an https:// origin. Browsers other than localhost " +
         "need a secure context for getUserMedia — start a tunnel and set it."
     );
   }
-  if (stt.provider === "deepgram" && !stt.deepgram.apiKey) {
+  if (!stt.deepgram.apiKey) {
     console.warn("[config] DEEPGRAM_API_KEY is empty — transcription will not start.");
+  }
+  if (!llm.gemini.apiKey) {
+    console.warn(
+      "[config] GEMINI_API_KEY is empty — the LLM classifier is off; scoring runs on rules alone."
+    );
   }
   if (!webrtc.roomSecret) {
     console.warn(

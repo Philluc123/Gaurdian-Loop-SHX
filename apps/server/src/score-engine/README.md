@@ -33,7 +33,12 @@ event has to be complete when it leaves the reducer.
   Hard combos (e.g. `SECRECY + UNTRACEABLE_PAYMENT`) also raise `floor` to ≥ 75.
   LLM-only signals never complete a combo.
 - **Floor**: a sticky minimum for the rest of the call. Neither decay nor the LLM
-  can take the score below it.
+  can take the score below it. Hard rule combos set it, and so do **two consecutive
+  LLM reads of 80 or more** (neither benign), at the lower of the two. Without that,
+  decay between heartbeats caps a no-keyword scam at roughly the LLM's estimate
+  minus the heartbeat's worth of decay, which can never reach 70. A single read can't
+  set it, so one manipulated or mistaken read can't alert alone. `llm_error` results
+  neither break nor extend the streak.
 - **LLM**: the score moves halfway toward the LLM's estimate (a quarter of the way
   when `benignContext` is true and the estimate is higher). `llm_error` is ignored.
 - **Decay**: −1 per `tick`, down to `floor`. A tick that changes nothing emits nothing.

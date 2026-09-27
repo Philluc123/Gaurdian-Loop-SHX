@@ -193,7 +193,29 @@ export const RULES: Rule[] = [
     signal: "CREDENTIAL_REQUEST",
     speaker: "caller",
     weight: 38,
+    // "your" separates asking for one from a caller stating their own. When speech-to-text
+    // splits "…hand me your | Social Security number", runRules' previousText joins it.
     patterns: [pat(["your", "social", "security", "number"]), pat(["ssn"])],
+  },
+  {
+    id: "credential.card",
+    signal: "CREDENTIAL_REQUEST",
+    speaker: "caller",
+    weight: 36,
+    patterns: [
+      pat(["your", "credit", "card", "number"]),
+      pat(["your", "debit", "card", "number"]),
+      pat(["your", "card", "number"]),
+      pat(["cvv"]),
+      pat(["security", "code", "on", "the", "back"], 6),
+    ],
+  },
+  {
+    id: "credential.read_out",
+    signal: "CREDENTIAL_REQUEST",
+    speaker: "caller",
+    weight: 20,
+    patterns: [pat(["read", "it", "out"]), pat(["read", "me", "the", "numbers"], 5)],
   },
 
   // --- THREAT (caller) ---

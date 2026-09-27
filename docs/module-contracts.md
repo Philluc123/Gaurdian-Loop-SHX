@@ -156,17 +156,17 @@ transcripts where each turn is attributed to the right speaker.
 
 ---
 
-### 3.2 STT adapter (Scribe / Deepgram / Azure, under test)
+### 3.2 STT adapter (Deepgram)
 
-**Owns:** vendor connections, reconnection, and translating vendor responses into one
-common format. Each vendor gets its own adapter behind the same interface, so
-switching vendors is a config change.
+**Owns:** the vendor connection, reconnection, and translating vendor responses into
+one common format. The vendor sits behind this interface, so nothing downstream
+depends on it being Deepgram.
 
 **Interface:**
 
 ```ts
 interface SttAdapter {
-  name: "elevenlabs" | "deepgram" | "azure";
+  name: "deepgram";
   openSession(callId: CallId, speaker: Speaker,
               onTranscript: (e: TranscriptEvent) => void): SttSession;
 }
@@ -197,7 +197,7 @@ interface TranscriptEvent {
 }
 ```
 
-**Done when:** each adapter turns a recorded call into a clean sequence of partials
+**Done when:** the adapter turns a recorded call into a clean sequence of partials
 followed by one final per segment, and survives a dropped connection by reconnecting.
 
 ---
@@ -230,14 +230,30 @@ interface CallState {
 }
 ```
 
+**Why the LLM is there.** The rules are fast and explainable, but they only see
+keywords. The LLM covers the two things they miss: a scam that never uses a keyword
+(a caller who paraphrases around "gift card" or "Medicare" on purpose), and a keyword
+that isn't a scam in context (a grandson mentioning a gift card for a birthday). Rules
+still set the score floor, so a fooled LLM can't talk a real combo back down.
+
 **Trigger policy (calls the LLM when):**
 
 1. a final segment produces any rule hit,
 2. a victim-side compliance or disclosure hit occurs,
-3. about 45 seconds of speech pass with no LLM call (heartbeat).
+3. about 15 seconds (testing; 30 for the demo) pass with new speech but no LLM call (heartbeat;
+   `LLM_HEARTBEAT_SEC`). This is the trigger that catches keyword-free scams, since
+   without a rule hit nothing else sends the conversation to the LLM. No new speech,
+   no heartbeat.
+4. the call ends with speech the LLM hasn't read (final). The heartbeat stops at
+   hangup, so without this the last stretch of a call is never read. It waits for the
+   STT flush so the last words are included. An alert it raises still reaches the
+   guardian, who can call back.
 
-Debounce each trigger by about 1.2 s. Keep at most one LLM request in flight per call,
-and drop results whose `seq` is stale.
+Debounce each trigger by about 1.2 s (the first trigger starts the timer; later ones
+join it rather than restarting it). Keep at most one LLM request in flight per call;
+a trigger that arrives mid-request runs when it settles. Drop results whose `seq` is
+stale. Each request carries the final turns from the last `windowSec` (60 s) of speech,
+capped at 10, plus the one-line `carryContext` memory from the previous result.
 
 **Done when:** replaying a fixture file (see section 5) drives the full chain end to
 end without any vendor connected.
@@ -251,7 +267,11 @@ end without any vendor connected.
 **Interface (pure function):**
 
 ```ts
-function runRules(input: { speaker: Speaker; text: string }): RuleHit[];
+function runRules(input: {
+  speaker: Speaker;
+  text: string;
+  previousText?: string;   // same speaker's previous line; phrases split across the two still match
+}): RuleHit[];
 
 interface RuleHit {
   ruleId: string;                         // e.g. "payment.gift_card"
@@ -294,14 +314,14 @@ function classify(req: LLMRequest): Promise<LLMResult>;
 interface LLMRequest {
   callId: CallId;
   seq: number;
-  trigger: "rule" | "victim" | "heartbeat";
+  trigger: "rule" | "victim" | "heartbeat" | "final";
   state: {
     score: number;
     signals: Signal[];
     elapsedSec: number;
     carryContext: string;                 // e.g. "caller claims to be from Medicare"
   };
-  turns: Array<{ speaker: Speaker; text: string }>;   // last 4–6 final turns
+  turns: Array<{ speaker: Speaker; text: string }>;   // final turns in the rolling window (≤10)
 }
 
 interface LLMResult {
@@ -358,7 +378,8 @@ interface ScoreContext {
 
 interface ScoreState {
   score: number;
-  floor: number;                          // minimum set by hard rule combos; LLM can't go below it
+  floor: number;                          // sticky minimum: hard rule combos, or 2 consecutive LLM reads >= 80
+  lastLlmScore: number | null;            // previous LLM estimate, for that streak
   level: RiskLevel;
   signals: Partial<Record<Signal, { source: "rules" | "llm" | "both"; firstSeenMs: number }>>;   // firstSeenMs: since call start
   alertArmed: boolean;                    // re-arms after score drops well below threshold

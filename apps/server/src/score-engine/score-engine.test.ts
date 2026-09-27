@@ -307,3 +307,35 @@ describe("purity", () => {
     expect(run(inputs)).toEqual(run(inputs));
   });
 });
+
+// A scam that trips no rules (live test call, 2026-09-27): the LLM read 85 three
+// times in a row, but decay between heartbeats held the score near 50 forever.
+describe("LLM floor", () => {
+  it("two consecutive confident reads set a floor that decay can't erode, and alert", () => {
+    const { state, alerts } = run([llm(85), ...ticks(30), llm(85)]);
+    expect(state.floor).toBe(85);
+    expect(state.score).toBe(85);
+    expect(alerts).toHaveLength(1);
+    const after = run(ticks(60), state).state;
+    expect(after.score).toBe(85);
+  });
+
+  it("uses the lower of the two reads", () => {
+    expect(run([llm(95), llm(82)]).state.floor).toBe(82);
+  });
+
+  it("a single confident read sets no floor", () => {
+    const { state, alerts } = run([llm(100), ...ticks(40)]);
+    expect(state.floor).toBe(0);
+    expect(alerts).toHaveLength(0);
+  });
+
+  it("a benign or below-bar read in between breaks the streak", () => {
+    expect(run([llm(90), llm(90, { benignContext: true }), llm(90)]).state.floor).toBe(0);
+    expect(run([llm(90), llm(60), llm(90)]).state.floor).toBe(0);
+  });
+
+  it("an llm_error neither breaks nor extends the streak", () => {
+    expect(run([llm(90), llm(0, { reason: "llm_error" }), llm(90)]).state.floor).toBe(90);
+  });
+});

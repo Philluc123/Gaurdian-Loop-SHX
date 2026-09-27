@@ -3,9 +3,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AlertTriggered,
+  AudioFrame,
   GuardianEvent,
+  LLMRequest,
+  LLMResult,
   RulesHitsEvent,
   ScoreUpdated,
+  SttAdapter,
   TranscriptEvent,
 } from "@guardian-loop/shared-types";
 import { EventBus } from "../event-bus";
@@ -237,5 +241,293 @@ describe("orchestrator: guardian notification (M3)", () => {
     expect(ofType("alert.triggered")).toHaveLength(1);
     expect(ofType("alert.sent")).toHaveLength(0);
     expect(error).toHaveBeenCalled();
+  });
+});
+
+describe("orchestrator: STT sessions", () => {
+  function fakeStt() {
+    const sent: AudioFrame[] = [];
+    const closed: string[] = [];
+    const emit: Record<string, (e: TranscriptEvent) => void> = {};
+    const adapter: SttAdapter = {
+      name: "deepgram",
+      openSession(callId, speaker, onTranscript) {
+        emit[`${callId}/${speaker}`] = onTranscript;
+        return {
+          sendAudio: (frame) => sent.push(frame),
+          close: async () => void closed.push(`${callId}/${speaker}`),
+        };
+      },
+    };
+    return { adapter, sent, closed, emit };
+  }
+
+  function frame(callId: string, speaker: "caller" | "victim"): AudioFrame {
+    return { type: "audio.frame", callId, speaker, encoding: "pcm16", sampleRate: 16000, payload: "", seq: 0, ts: 0 };
+  }
+
+  it("routes audio by speaker, publishes transcripts, and closes sessions on call.ended", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const stt = fakeStt();
+    orchestrator.stop();
+    orchestrator = createOrchestrator(bus, { stt: stt.adapter });
+
+    startCall("c1");
+    bus.publish(frame("c1", "caller"));
+    bus.publish(frame("c1", "victim"));
+    expect(stt.sent.map((f) => f.speaker)).toEqual(["caller", "victim"]);
+
+    stt.emit["c1/caller"]!({
+      type: "transcript", callId: "c1", speaker: "caller", segmentId: "s1",
+      text: "hello", isFinal: true, startMs: 0, endMs: 500, ts: 1,
+    });
+    expect(ofType("transcript")).toHaveLength(1);
+    expect(orchestrator.getCall("c1")!.turns).toHaveLength(1);
+
+    bus.publish({ type: "call.ended", callId: "c1", reason: "hangup", ts: 2 });
+    await vi.runAllTicks();
+    await Promise.resolve();
+    expect(stt.closed.sort()).toEqual(["c1/caller", "c1/victim"]);
+  });
+});
+
+describe("orchestrator: LLM trigger policy (M4)", () => {
+  const DEBOUNCE = 1200;
+  const HEARTBEAT = 30_000;
+
+  /** A classify() whose responses the test releases one at a time. */
+  function fakeClassify(respond: (req: LLMRequest) => Partial<LLMResult> = () => ({})) {
+    const requests: LLMRequest[] = [];
+    const waiting: Array<() => void> = [];
+    const classify = (req: LLMRequest) =>
+      new Promise<LLMResult>((resolve) => {
+        requests.push(req);
+        waiting.push(() =>
+          resolve({
+            type: "llm.result",
+            callId: req.callId,
+            seq: req.seq,
+            signals: [],
+            score: 50,
+            benignContext: false,
+            reason: "fake read",
+            carryContext: `memory after seq ${req.seq}`,
+            latencyMs: 5,
+            model: "fake",
+            ts: Date.now(),
+            ...respond(req),
+          })
+        );
+      });
+    /** Resolves the oldest outstanding request and lets its handlers run. */
+    const settle = async () => {
+      waiting.shift()!();
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    return { classify, requests, settle };
+  }
+
+  let seg = 0;
+  function say(callId: string, speaker: "caller" | "victim", text: string) {
+    seg += 1;
+    bus.publish({
+      type: "transcript", callId, speaker, segmentId: `s${seg}`, text, isFinal: true,
+      startMs: seg * 3000, endMs: seg * 3000 + 2000, ts: Date.now(),
+    });
+  }
+
+  function withLlm(fake: ReturnType<typeof fakeClassify>) {
+    orchestrator.stop();
+    orchestrator = createOrchestrator(bus, {
+      now: () => Date.now(),
+      classify: fake.classify,
+      llmDebounceMs: DEBOUNCE,
+      llmHeartbeatMs: HEARTBEAT,
+    });
+  }
+
+  it("catches a caller who never says a keyword: the heartbeat sends the talk to the LLM", async () => {
+    const fake = fakeClassify(() => ({ score: 80, signals: ["IMPERSONATION"], reason: "vague authority claim" }));
+    withLlm(fake);
+    startCall("c1");
+
+    say("c1", "caller", "hi there, can you do me a favor and head down to the store for me");
+    say("c1", "victim", "sure, what do you need");
+    // Self-check: this conversation really does slip past the rules.
+    expect((ofType("rules.hits") as RulesHitsEvent[]).every((h) => h.hits.length === 0)).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(HEARTBEAT - 2000);
+    expect(fake.requests).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(2000 + DEBOUNCE);
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0]).toMatchObject({ callId: "c1", seq: 1, trigger: "heartbeat" });
+    expect(fake.requests[0].turns.map((t) => t.speaker)).toEqual(["caller", "victim"]);
+
+    await fake.settle();
+    expect(ofType("llm.result")).toHaveLength(1);
+    const scores = ofType("score.updated") as ScoreUpdated[];
+    expect(scores.at(-1)).toMatchObject({ source: "llm", reason: "vague authority claim" });
+    expect(orchestrator.getCall("c1")!.score.signals.IMPERSONATION?.source).toBe("llm");
+  });
+
+  it("doesn't heartbeat when nobody has said anything new", async () => {
+    const fake = fakeClassify();
+    withLlm(fake);
+    startCall("c1");
+    await vi.advanceTimersByTimeAsync(HEARTBEAT * 3);
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it("calls the LLM once, after the debounce, for a burst of rule hits", async () => {
+    const fake = fakeClassify();
+    withLlm(fake);
+    startCall("c1");
+
+    say("c1", "caller", "this is Officer Daniels calling from Medicare");
+    say("c1", "caller", "you need to pay with a gift card today");
+    await vi.advanceTimersByTimeAsync(DEBOUNCE - 1);
+    expect(fake.requests).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0].trigger).toBe("rule");
+    expect(fake.requests[0].turns).toHaveLength(2);
+  });
+
+  it("labels victim compliance or disclosure as the stronger 'victim' trigger", async () => {
+    const fake = fakeClassify();
+    withLlm(fake);
+    startCall("c1");
+
+    say("c1", "caller", "you need to pay with a gift card today");
+    say("c1", "victim", "okay, I'm heading to the store now");
+    const victimHits = (ofType("rules.hits") as RulesHitsEvent[]).filter((h) => h.speaker === "victim");
+    expect(victimHits.at(-1)!.hits.some((h) => h.signal === "VICTIM_COMPLIANCE")).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(DEBOUNCE);
+    expect(fake.requests.map((r) => r.trigger)).toEqual(["victim"]);
+  });
+
+  it("keeps one request in flight, then runs what queued up behind it", async () => {
+    const fake = fakeClassify();
+    withLlm(fake);
+    startCall("c1");
+
+    say("c1", "caller", "this is Officer Daniels calling from Medicare");
+    await vi.advanceTimersByTimeAsync(DEBOUNCE);
+    expect(fake.requests).toHaveLength(1);
+
+    say("c1", "caller", "you need to pay with a gift card today");
+    say("c1", "caller", "don't tell anyone about this call");
+    await vi.advanceTimersByTimeAsync(DEBOUNCE * 5);
+    expect(fake.requests).toHaveLength(1); // still waiting on the first
+
+    await fake.settle();
+    expect(fake.requests).toHaveLength(2);
+    expect(fake.requests[1]).toMatchObject({ seq: 2, trigger: "rule" });
+    // The memory from the first result rides along into the second request.
+    expect(fake.requests[1].state.carryContext).toBe("memory after seq 1");
+  });
+
+  it("takes one last look at hangup, at speech the heartbeat never got to", async () => {
+    const fake = fakeClassify();
+    withLlm(fake);
+    startCall("c1");
+    say("c1", "caller", "hi there, can you do me a favor and head down to the store for me");
+    say("c1", "victim", "I suppose I can drive over there now");
+    await vi.advanceTimersByTimeAsync(HEARTBEAT / 2);
+    expect(fake.requests).toHaveLength(0);
+
+    bus.publish({ type: "call.ended", callId: "c1", reason: "hangup", ts: Date.now() });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE);
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0]).toMatchObject({ trigger: "final" });
+    expect(fake.requests[0].turns.at(-1)!.text).toBe("I suppose I can drive over there now");
+
+    await fake.settle();
+    expect(ofType("llm.result")).toHaveLength(1); // an ended call still scores
+  });
+
+  it("skips the final look when the LLM has already read everything", async () => {
+    const fake = fakeClassify();
+    withLlm(fake);
+    startCall("c1");
+    say("c1", "caller", "this is Officer Daniels calling from Medicare");
+    await vi.advanceTimersByTimeAsync(DEBOUNCE);
+    await fake.settle();
+
+    bus.publish({ type: "call.ended", callId: "c1", reason: "hangup", ts: Date.now() });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE * 3);
+    expect(fake.requests).toHaveLength(1);
+  });
+
+  it("waits for the STT flush, so the last words before hangup are included", async () => {
+    const fake = fakeClassify();
+    let emitCaller: ((e: TranscriptEvent) => void) | undefined;
+    const stt: SttAdapter = {
+      name: "deepgram",
+      openSession(callId, speaker, onTranscript) {
+        if (speaker === "caller") emitCaller = onTranscript;
+        return {
+          sendAudio: () => {},
+          // The vendor's tail arrives while closing, like Deepgram's flush.
+          close: async () => {
+            if (speaker !== "caller") return;
+            await Promise.resolve();
+            onTranscript({
+              type: "transcript", callId, speaker, segmentId: "tail", isFinal: true,
+              text: "if you hang up the case goes to the federal courts",
+              startMs: 9000, endMs: 11000, ts: Date.now(),
+            });
+          },
+        };
+      },
+    };
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    orchestrator.stop();
+    orchestrator = createOrchestrator(bus, {
+      stt, classify: fake.classify, llmDebounceMs: DEBOUNCE, llmHeartbeatMs: HEARTBEAT,
+    });
+    startCall("c1");
+    emitCaller!({
+      type: "transcript", callId: "c1", speaker: "caller", segmentId: "s1", isFinal: true,
+      text: "stay on the line with me", startMs: 0, endMs: 2000, ts: Date.now(),
+    });
+
+    bus.publish({ type: "call.ended", callId: "c1", reason: "hangup", ts: Date.now() });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE * 2);
+    const texts = fake.requests.flatMap((r) => r.turns.map((t) => t.text));
+    expect(texts).toContain("if you hang up the case goes to the federal courts");
+  });
+
+  it("drops a result whose seq is stale", async () => {
+    const fake = fakeClassify(() => ({ seq: 99, score: 100 }));
+    withLlm(fake);
+    startCall("c1");
+    say("c1", "caller", "this is Officer Daniels calling from Medicare");
+    await vi.advanceTimersByTimeAsync(DEBOUNCE);
+    await fake.settle();
+
+    expect(ofType("llm.result")).toHaveLength(0);
+    expect((ofType("score.updated") as ScoreUpdated[]).some((s) => s.source === "llm")).toBe(false);
+  });
+
+  it("still alerts exactly once on the Medicare scam with the LLM agreeing", async () => {
+    const fake = fakeClassify(() => ({ score: 90 }));
+    withLlm(fake);
+    startCall("scam");
+    play(fixture("gift-card-medicare-scam", "scam"));
+    await vi.advanceTimersByTimeAsync(DEBOUNCE);
+    await fake.settle();
+    expect(ofType("alert.triggered")).toHaveLength(1);
+  });
+
+  it("keeps the family check-in quiet when the LLM reads it as benign", async () => {
+    const fake = fakeClassify(() => ({ score: 5, benignContext: true, reason: "grandson checking in" }));
+    withLlm(fake);
+    startCall("legit");
+    play(fixture("legit-family-checkin", "legit"));
+    await vi.advanceTimersByTimeAsync(HEARTBEAT + DEBOUNCE);
+    while (fake.requests.length > ofType("llm.result").length) await fake.settle();
+    expect(ofType("alert.triggered")).toHaveLength(0);
   });
 });

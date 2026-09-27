@@ -17,6 +17,15 @@ export const REPEAT_FACTOR = 0.5;
 
 /** How far each LLM result moves the score toward the LLM's own estimate. */
 export const LLM_PULL = 0.5;
+/**
+ * LLM floor. Decay erases most of an LLM result before the next heartbeat, so a
+ * scam that trips no rules could never reach the threshold on LLM pulls alone.
+ * Two consecutive reads at or above this estimate (neither marked benign) set a
+ * floor at the lower of the two — the same sticky minimum a hard rule combo sets.
+ * Requiring two reads means one manipulated or mistaken read can't alert alone.
+ */
+export const LLM_FLOOR_MIN_ESTIMATE = 80;
+
 /** Pull used instead when the LLM says the context is benign but scores higher. */
 export const LLM_PULL_BENIGN_UP = 0.25;
 

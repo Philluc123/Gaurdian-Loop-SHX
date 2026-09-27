@@ -9,7 +9,8 @@
 // weights (repeats count half); the first time rule hits complete a combo it adds
 // a bonus and may raise `floor`, a sticky minimum for the rest of the call. Each
 // LLM result moves the score part-way toward the LLM's estimate but never below
-// `floor`. Ticks decay the score toward `floor`. An alert fires once when the
+// `floor`; two consecutive confident LLM reads raise `floor` themselves (see
+// LLM_FLOOR_MIN_ESTIMATE). Ticks decay the score toward `floor`. An alert fires once when the
 // score reaches ALERT_THRESHOLD and re-arms only after it falls below REARM_BELOW.
 
 import type {
@@ -29,6 +30,7 @@ import {
   COMBOS,
   DECAY_PER_TICK,
   LLM_ERROR_REASON,
+  LLM_FLOOR_MIN_ESTIMATE,
   LLM_PULL,
   LLM_PULL_BENIGN_UP,
   PROTECTIVE_SIGNALS,
@@ -58,7 +60,7 @@ type SignalMap = ScoreState["signals"];
 type Source = "rules" | "llm" | "decay";
 
 export function initialScoreState(): ScoreState {
-  return { score: 0, floor: 0, level: "low", signals: {}, alertArmed: true, lastReason: "" };
+  return { score: 0, floor: 0, level: "low", signals: {}, alertArmed: true, lastReason: "", lastLlmScore: null };
 }
 
 export function levelFor(score: number): RiskLevel {
@@ -116,7 +118,22 @@ function applyLLM(prev: ScoreState, r: LLMResult, ctx: ScoreContext) {
   const score = prev.score + (r.score - prev.score) * pull;
   const signals = mergeSignals(prev.signals, r.signals, "llm", r.ts - ctx.startedAt);
 
-  return finish(prev, { score, signals, lastReason: r.reason || prev.lastReason }, "llm", r.ts, ctx);
+  // A benign read breaks the streak rather than extending it.
+  const lastLlmScore = r.benignContext ? null : r.score;
+  const confirmed =
+    lastLlmScore !== null &&
+    prev.lastLlmScore !== null &&
+    lastLlmScore >= LLM_FLOOR_MIN_ESTIMATE &&
+    prev.lastLlmScore >= LLM_FLOOR_MIN_ESTIMATE;
+  const floor = confirmed ? Math.max(prev.floor, Math.min(lastLlmScore, prev.lastLlmScore!)) : prev.floor;
+
+  return finish(
+    prev,
+    { score, floor, signals, lastReason: r.reason || prev.lastReason, lastLlmScore },
+    "llm",
+    r.ts,
+    ctx
+  );
 }
 
 function applyTick(prev: ScoreState, t: ScoreTick, ctx: ScoreContext) {
@@ -136,12 +153,13 @@ function finish(
   const score = clamp(Math.max(Math.round(patch.score ?? prev.score), floor));
   const signals = patch.signals ?? prev.signals;
   const lastReason = patch.lastReason ?? prev.lastReason;
+  const lastLlmScore = patch.lastLlmScore !== undefined ? patch.lastLlmScore : prev.lastLlmScore;
 
   let alertArmed = prev.alertArmed || score < REARM_BELOW;
   const fire = alertArmed && score >= ALERT_THRESHOLD;
   if (fire) alertArmed = false;
 
-  const next: ScoreState = { score, floor, level: levelFor(score), signals, alertArmed, lastReason };
+  const next: ScoreState = { score, floor, level: levelFor(score), signals, alertArmed, lastReason, lastLlmScore };
   const events: ScoreEvent[] = [];
 
   // Decay only reports actual movement; rules/LLM always report (signals or reason may have changed).
