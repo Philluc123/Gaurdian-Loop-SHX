@@ -101,8 +101,10 @@ the attribution gate. Expect:
    ready-made link per role, with the room secret already filled in.
 3. Open the **caller** link on one device and the **victim** link on the other.
 4. Both people put their earbuds in and allow microphone access when prompted.
-5. Talk. The page shows connection state, a mic level meter, and whether your track is
-   currently gated.
+5. Talk. Each phone shows an iPhone-style call screen: its own role as the name at the
+   top ("Caller" or "Victim"), the call timer once connected, and working mute, keypad
+   (real DTMF tones, sent to the other phone) and end buttons. Speaker, FaceTime and
+   add are there for the look only.
 6. Hang up. The transcript is in `logs/calls/<callId>.txt`.
 
 The caller always creates the WebRTC offer, so the two sides never collide. Because both
@@ -114,7 +116,8 @@ STUN is configured as a fallback and TURN isn't needed.
 ## Tuning the gate, in the room you'll demo in
 
 The thresholds depend on that room's noise floor, so budget ten minutes on site. Watch
-the "Your audio" line on each page while one person talks:
+the "Your audio" line on each page while one person talks. It is hidden on the normal
+phone screen — add `&debug=1` to both links to show it, along with a mic level meter:
 
 - **The silent person's page never says "gated"** → bleed isn't being caught. Lower
   `WEBRTC_GATE_DOMINANCE_DB` (try 6).

@@ -2,154 +2,288 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Guardian Loop — Call</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1c1c1e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Call</title>
     <style>
+      /* Modelled on the iOS in-call screen: name and timer up top, a 3x2 grid of
+         round translucent controls with the red end button, and a keypad that
+         replaces the grid. */
       :root {
-        color-scheme: dark;
-        --bg: #0f1115;
-        --panel: #181b22;
-        --border: #2a2f3a;
-        --text: #e8eaed;
-        --muted: #9aa3b2;
-        --accent: #5b9dff;
-        --caller: #ff8f6b;
-        --victim: #6bd6a0;
-        --danger: #ff6b6b;
+        --text: #fff;
+        --text-2: rgba(255, 255, 255, 0.62);
+        --btn: rgba(255, 255, 255, 0.16);
+        --btn-press: rgba(255, 255, 255, 0.34);
+        --btn-on: #fff;
+        --btn-on-ink: #1c1c1e;
+        --end: #ff3b30;
+        --end-press: #d92f26;
+        --size: 76px;
+        --key: 78px;
       }
-      * { box-sizing: border-box; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { height: 100%; }
       body {
         margin: 0;
-        min-height: 100vh;
+        min-height: 100dvh;
+        color: var(--text);
+        background: radial-gradient(120% 80% at 50% 0%, #3a3a3e 0%, #1c1c1e 55%, #0b0b0c 100%);
+        font: 17px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; }
+
+      /* ---- in-call screen ---- */
+      .screen {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: calc(env(safe-area-inset-top) + 64px) 24px calc(env(safe-area-inset-bottom) + 44px);
+      }
+      .contact { text-align: center; }
+      .contact-name {
+        margin: 0;
+        font-size: 34px;
+        font-weight: 400;
+        letter-spacing: 0.01em;
+      }
+      .contact-status {
+        margin: 6px 0 0;
+        font-size: 17px;
+        color: var(--text-2);
+        font-variant-numeric: tabular-nums;
+        min-height: 1.3em;
+      }
+      .spacer { flex: 1; }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(3, var(--size));
+        column-gap: 28px;
+        row-gap: 22px;
+        justify-content: center;
+      }
+      .control { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+      .circle {
+        width: var(--size);
+        height: var(--size);
+        border-radius: 50%;
         display: grid;
         place-items: center;
-        padding: 16px;
-        background: var(--bg);
-        color: var(--text);
-        font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: var(--btn);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+        transition: background 120ms ease, color 120ms ease;
       }
-      main { width: 100%; max-width: 420px; }
-      .panel {
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 20px;
+      .circle svg { width: 32px; height: 32px; fill: currentColor; }
+      .control:active .circle { background: var(--btn-press); }
+      .control[aria-pressed="true"] .circle { background: var(--btn-on); color: var(--btn-on-ink); }
+      .control-label { font-size: 13px; font-weight: 500; }
+      .control-end .circle { background: var(--end); }
+      .control-end:active .circle { background: var(--end-press); }
+      .control-end .circle svg { width: 36px; height: 36px; }
+
+      /* ---- keypad ---- */
+      .keypad-display {
+        min-height: 44px;
+        margin: 0 0 18px;
+        font-size: 34px;
+        font-weight: 300;
+        letter-spacing: 0.04em;
+        text-align: center;
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        direction: rtl; /* keep the newest digits visible when it overflows */
       }
-      h1 { margin: 0 0 4px; font-size: 20px; }
-      .sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
-      label { display: block; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
-      input, select, button {
+      .keys {
+        display: grid;
+        grid-template-columns: repeat(3, var(--key));
+        column-gap: 26px;
+        row-gap: 16px;
+        justify-content: center;
+      }
+      .key {
+        width: var(--key);
+        height: var(--key);
+        border-radius: 50%;
+        background: var(--btn);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        transition: background 80ms ease;
+      }
+      .key:active, .key.pressed { background: var(--btn-press); }
+      .key-digit { font-size: 36px; font-weight: 400; }
+      .key-letters { margin-top: 2px; font-size: 10px; font-weight: 600; letter-spacing: 0.18em; min-height: 10px; }
+      .keypad-footer {
+        display: grid;
+        grid-template-columns: repeat(3, var(--key));
+        column-gap: 26px;
+        margin-top: 16px;
+        justify-content: center;
+        align-items: center;
+      }
+      .keypad-footer .control-end .circle { width: var(--key); height: var(--key); }
+      .hide { font-size: 17px; justify-self: center; }
+
+      /* ---- join form ---- */
+      .join { max-width: 360px; margin: 0 auto; }
+      .join h1 { margin: 0 0 6px; font-size: 28px; font-weight: 600; text-align: center; }
+      .join p.sub { margin: 0 0 28px; color: var(--text-2); text-align: center; font-size: 15px; }
+      .field { display: block; margin-bottom: 14px; font-size: 13px; color: var(--text-2); }
+      .field input, .field select {
         width: 100%;
         margin-top: 6px;
-        padding: 11px 12px;
+        padding: 13px 14px;
         font: inherit;
         color: var(--text);
-        background: #11141a;
-        border: 1px solid var(--border);
-        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 0;
+        border-radius: 12px;
+        -webkit-appearance: none;
+        appearance: none;
       }
-      button {
-        margin-top: 0;
-        background: var(--accent);
-        border-color: transparent;
-        color: #06101f;
+      .join-btn {
+        width: 100%;
+        margin-top: 10px;
+        padding: 14px;
+        border-radius: 14px;
+        background: #34c759;
+        color: #fff;
         font-weight: 600;
-        cursor: pointer;
       }
-      button.secondary { background: #222734; color: var(--text); }
-      button[data-muted="true"] { background: var(--danger); color: #fff; }
-      button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
-      .badges { display: flex; gap: 8px; align-items: center; margin-bottom: 18px; }
-      .badge {
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
-        background: #222734;
+      .hint { margin-top: 18px; color: var(--text-2); font-size: 13px; text-align: center; }
+
+      /* ---- debug panel (?debug=1): gate + mic level, for tuning in the room ---- */
+      .debug {
+        width: 100%;
+        max-width: 340px;
+        margin-top: 18px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.35);
+        font-size: 13px;
+        color: var(--text-2);
+        display: grid;
+        gap: 6px;
       }
-      .badge[data-role="caller"] { background: var(--caller); color: #2b1004; }
-      .badge[data-role="victim"] { background: var(--victim); color: #052a1a; }
-      .rows { display: grid; gap: 10px; margin-bottom: 18px; font-size: 14px; }
-      .row { display: flex; justify-content: space-between; gap: 12px; }
-      .row span:first-child { color: var(--muted); }
-      #gate-status[data-suppressed="true"] { color: var(--danger); font-weight: 600; }
-      .meter {
-        height: 8px;
-        border-radius: 999px;
-        background: #11141a;
-        overflow: hidden;
-        margin-bottom: 18px;
-      }
-      #meter-fill { height: 100%; width: 0%; background: var(--accent); transition: width 80ms linear; }
-      .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .debug-row { display: flex; justify-content: space-between; gap: 12px; }
+      .debug-row b { color: var(--text); font-weight: 600; }
+      #gate-status[data-suppressed="true"] { color: #ff9f0a; }
+      .meter { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+      #meter-fill { height: 100%; width: 0%; background: #34c759; transition: width 80ms linear; }
+
       #error {
-        margin-top: 16px;
-        padding: 12px;
-        border: 1px solid var(--danger);
-        border-radius: 9px;
-        color: var(--danger);
+        margin: 16px auto 0;
+        max-width: 340px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: rgba(255, 59, 48, 0.18);
+        color: #ff6961;
         font-size: 14px;
+        text-align: center;
       }
-      .hint { margin-top: 16px; color: var(--muted); font-size: 13px; }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
-    <main>
-      <!-- Join screen, shown when the URL has no room/role. -->
-      <section id="join" class="panel" hidden>
+    <!-- Join form: shown when the link has no room/role. -->
+    <section id="join" class="screen" hidden>
+      <div class="join">
         <h1>Join a call</h1>
-        <p class="sub">Two people, two devices, one room name.</p>
+        <p class="sub">Two phones, one room name.</p>
         <form id="join-form">
-          <label>
+          <label class="field">
             Room
             <input id="room-input" value="demo" required autocomplete="off" />
           </label>
-          <label>
-            I am the
+          <label class="field">
+            This phone is the
             <select id="role-input">
-              <option value="caller">caller (the scammer)</option>
-              <option value="victim">victim (the person called)</option>
+              <option value="caller">Caller (the scammer)</option>
+              <option value="victim">Victim (the person called)</option>
             </select>
           </label>
-          <label>
+          <label class="field">
             Room secret
             <input id="secret-input" type="password" autocomplete="off" />
           </label>
-          <button type="submit">Join</button>
+          <button type="submit" class="join-btn">Join</button>
         </form>
-        <p class="hint">
-          Wear earbuds. Two open microphones in one room hear each other, and earbuds
-          are what keep each voice on its own track.
-        </p>
-      </section>
+        <p class="hint">Wear earbuds — two open mics in one room hear each other.</p>
+      </div>
+    </section>
 
-      <!-- Live call. -->
-      <section id="live" class="panel" hidden>
-        <div class="badges">
-          <span class="badge" id="role-badge">—</span>
-          <span class="badge" id="room-badge">—</span>
+    <!-- In-call screen. -->
+    <section id="live" class="screen" hidden>
+      <header class="contact">
+        <h1 class="contact-name" id="contact-name">—</h1>
+        <p class="contact-status" id="status">connecting…</p>
+      </header>
+
+      <div class="spacer"></div>
+
+      <!-- Button grid (iOS: speaker, FaceTime, mute / add, end, keypad). -->
+      <div id="controls-view">
+        <div class="controls">
+          <button class="control" id="speaker" type="button" aria-pressed="false">
+            <span class="circle"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg></span>
+            <span class="control-label">speaker</span>
+          </button>
+          <button class="control" type="button" tabindex="-1">
+            <span class="circle"><svg viewBox="0 0 24 24"><path d="M15 8v8H5V8h10m1-2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4V7a1 1 0 0 0-1-1z"/></svg></span>
+            <span class="control-label">FaceTime</span>
+          </button>
+          <button class="control" id="mute" type="button" aria-pressed="false">
+            <span class="circle"><svg viewBox="0 0 24 24"><path d="M19 11h-1.7a5.2 5.2 0 0 1-1.1 3.2l1.2 1.2A6.9 6.9 0 0 0 19 11zm-4.02.17L9 5.18V5a3 3 0 0 1 6 0v6l-.02.17zM4.27 3 3 4.27l6.01 6.01V11a3 3 0 0 0 4.2 2.74l1.66 1.66A5.2 5.2 0 0 1 12 16.1 5.1 5.1 0 0 1 6.7 11H5a6.9 6.9 0 0 0 6 6.72V21h2v-3.28a7.1 7.1 0 0 0 2.55-.9L19.73 21 21 19.73 4.27 3z"/></svg></span>
+            <span class="control-label">mute</span>
+          </button>
+          <button class="control" type="button" tabindex="-1">
+            <span class="circle"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></span>
+            <span class="control-label">add</span>
+          </button>
+          <button class="control control-end" id="hangup" type="button">
+            <span class="circle"><svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85a1 1 0 0 1-.7.28 1 1 0 0 1-.71-.29L.29 13.08a1 1 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67a1 1 0 0 1 0 1.41l-2.48 2.48a1 1 0 0 1-.71.29 1 1 0 0 1-.7-.28 11.3 11.3 0 0 0-2.67-1.85 1 1 0 0 1-.56-.9v-3.1A15 15 0 0 0 12 9z"/></svg></span>
+            <span class="control-label">end</span>
+          </button>
+          <button class="control" id="keypad-open" type="button">
+            <span class="circle"><svg viewBox="0 0 24 24"><path d="M6 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM6 16.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></span>
+            <span class="control-label">keypad</span>
+          </button>
         </div>
-        <div class="rows">
-          <div class="row"><span>Connection</span><span id="status">…</span></div>
-          <div class="row"><span>Other person</span><span id="peer-status">—</span></div>
-          <div class="row"><span>Your audio</span><span id="gate-status">live</span></div>
+      </div>
+
+      <!-- Keypad (replaces the grid, as on iOS). -->
+      <div id="keypad-view" hidden>
+        <p class="keypad-display" id="keypad-display" aria-live="polite"></p>
+        <div class="keys" id="keys"></div>
+        <div class="keypad-footer">
+          <span></span>
+          <button class="control control-end" id="hangup-keypad" type="button" aria-label="end call">
+            <span class="circle"><svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85a1 1 0 0 1-.7.28 1 1 0 0 1-.71-.29L.29 13.08a1 1 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67a1 1 0 0 1 0 1.41l-2.48 2.48a1 1 0 0 1-.71.29 1 1 0 0 1-.7-.28 11.3 11.3 0 0 0-2.67-1.85 1 1 0 0 1-.56-.9v-3.1A15 15 0 0 0 12 9z"/></svg></span>
+          </button>
+          <button class="hide" id="keypad-hide" type="button">Hide</button>
         </div>
+      </div>
+
+      <!-- Tuning aids, only with ?debug=1 — not part of the phone look. -->
+      <div class="debug" id="debug" hidden>
+        <div class="debug-row"><span>Other phone</span><b id="peer-status">—</b></div>
+        <div class="debug-row"><span>Your audio</span><b id="gate-status">live</b></div>
         <div class="meter"><div id="meter-fill"></div></div>
-        <div class="actions">
-          <button id="mute" class="secondary" type="button">Mute</button>
-          <button id="hangup" class="danger" type="button">Hang up</button>
-        </div>
-        <p class="hint">
-          "Gated" means the server judged the other person clearly louder and muted
-          this track to keep the transcripts separate.
-        </p>
-        <audio id="remote-audio" autoplay playsinline></audio>
-      </section>
+      </div>
 
       <p id="error" hidden></p>
-    </main>
+      <audio id="remote-audio" autoplay playsinline></audio>
+    </section>
 
     <script src="call.js"></script>
   </body>
