@@ -1,42 +1,47 @@
-// SMS template (docs/module-contracts.md §3.7). Pure: AlertTriggered in, body out.
+// Notification template (docs/module-contracts.md §3.7). Pure: AlertTriggered in,
+// notification content out.
 //
 // The quote and reason come straight from the event (snippet / reason) — this
 // module never regenerates them, only trims them to fit the length budget.
 
 import type { AlertTriggered, CallId } from "@guardian-loop/shared-types";
 
-/** Contract says "keep under ~300 characters". */
-export const MAX_SMS_CHARS = 300;
+/** Roughly what a lock-screen notification shows before truncating. */
+export const MAX_NOTIFICATION_BODY_CHARS = 180;
 
 const ELLIPSIS = "…";
+
+export interface NotificationContent {
+  title: string;
+  body: string;
+  url?: string; // opened when the guardian taps the notification
+}
 
 export function liveViewUrl(baseUrl: string, callId: CallId): string {
   return `${baseUrl.replace(/\/+$/, "")}/call/${encodeURIComponent(callId)}`;
 }
 
 /**
- * Builds the guardian SMS. The live-view line is omitted when `baseUrl` is
- * empty (no public host configured) rather than sending a dead link.
- * The quote is trimmed first, then the reason, so header and link always survive.
+ * Builds the guardian notification. `url` is omitted when `baseUrl` is empty
+ * (no public host configured) rather than linking somewhere dead.
+ * The quote is trimmed first, then the reason, so the body stays within budget.
  */
-export function buildSmsBody(alert: AlertTriggered, baseUrl: string | undefined): string {
-  const header = `⚠️ Guardian Loop: possible scam call (risk ${alert.score}).`;
-  const link = baseUrl ? `Live view: ${liveViewUrl(baseUrl, alert.callId)}` : "";
+export function buildNotification(alert: AlertTriggered, baseUrl: string | undefined): NotificationContent {
+  const title = `⚠️ Possible scam call (risk ${alert.score})`;
   let quote = pickQuote(alert.snippet);
   let reason = sentence(alert.reason.trim());
 
-  const render = () =>
-    [header, quote && `"${quote}"`, reason && `Why: ${reason}`, link].filter(Boolean).join("\n");
+  const render = () => [quote && `"${quote}"`, reason && `Why: ${reason}`].filter(Boolean).join("\n");
 
-  let over = [...render()].length - MAX_SMS_CHARS;
+  let over = [...render()].length - MAX_NOTIFICATION_BODY_CHARS;
   if (over > 0 && quote) {
     quote = truncate(quote, [...quote].length - over);
-    over = [...render()].length - MAX_SMS_CHARS;
+    over = [...render()].length - MAX_NOTIFICATION_BODY_CHARS;
   }
   if (over > 0 && reason) {
     reason = truncate(reason, [...reason].length - over);
   }
-  return render();
+  return { title, body: render(), ...(baseUrl ? { url: liveViewUrl(baseUrl, alert.callId) } : {}) };
 }
 
 /** The most recent caller line is the most telling; fall back to the last turn. */

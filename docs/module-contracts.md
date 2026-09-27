@@ -15,7 +15,7 @@ events it needs and publishes its own.
 
 ```mermaid
 flowchart LR
-  TW[Call ingestion<br/>Twilio / WebRTC] -- audio.frame --> STT[STT adapter]
+  TW[Call ingestion<br/>WebRTC] -- audio.frame --> STT[STT adapter]
   TW -- call.started / call.ended --> ORC
   STT -- transcript --> ORC[Orchestrator<br/>call state]
   ORC -- segment --> RUL[Rules classifier]
@@ -25,7 +25,7 @@ flowchart LR
   ORC -- rules.hits / llm.result / tick --> SCO[Score engine]
   SCO -- score.updated / alert.triggered --> ORC
   ORC -- WebSocket messages --> DASH[Guardian dashboard]
-  ORC -- alert.triggered --> ALR[Alerts / SMS]
+  ORC -- alert.triggered --> ALR[Alerts / notifications]
   ALR -- alert.sent --> ORC
   ORC -- all events --> DB[(Event store<br/>MongoDB)]
 ```
@@ -41,7 +41,7 @@ which makes them easy to build and test in isolation.
 Everyone imports from this package. Nobody redefines these locally.
 
 ```ts
-export type CallId = string;              // Twilio CallSid, or a UUID for WebRTC calls
+export type CallId = string;              // UUID assigned when the WebRTC session starts
 export type Speaker = "caller" | "victim";
 
 export type Signal =
@@ -73,13 +73,12 @@ export interface Turn {                   // one committed (final) utterance
 
 ## 3. Module contracts
 
-### 3.1 Call ingestion (Twilio Voice + Media Streams, WebRTC fallback)
+### 3.1 Call ingestion (WebRTC)
 
-**Owns:** the Twilio webhook (TwiML), the Media Streams WebSocket, the WebRTC
-fallback page.
+**Owns:** WebRTC signaling, peer connection setup, and capturing each participant's
+audio track.
 
-**Input:** Twilio webhooks and Media Streams messages (or browser microphone audio
-for the fallback).
+**Input:** WebRTC audio tracks for the caller and the victim.
 
 **Output events:**
 
@@ -87,7 +86,7 @@ for the fallback).
 interface CallStarted {
   type: "call.started";
   callId: CallId;
-  source: "twilio" | "webrtc";
+  source: "webrtc";
   from?: string;                          // caller's number, if known
   to?: string;                            // victim's number
   guardian: Guardian;                     // hard-coded config for the demo
@@ -97,7 +96,7 @@ interface CallStarted {
 interface AudioFrame {
   type: "audio.frame";
   callId: CallId;
-  speaker: Speaker;                       // mapped from Twilio's inbound/outbound track
+  speaker: Speaker;                       // mapped from the WebRTC participant's track
   encoding: "mulaw" | "pcm16";
   sampleRate: 8000 | 16000;
   payload: string;                        // base64 audio, ~20 ms per frame
@@ -114,8 +113,7 @@ interface CallEnded {
 ```
 
 **Done when:** a test call produces `call.started`, a steady stream of `audio.frame`
-for both speakers (verify which Twilio track is the caller), and `call.ended`. The
-WebRTC fallback must emit exactly the same events.
+for both speakers (verify which track is the caller), and `call.ended`.
 
 ---
 
@@ -364,9 +362,9 @@ crossing.
 
 ---
 
-### 3.7 Alerts (Twilio SMS)
+### 3.7 Alerts (notifications)
 
-**Owns:** the SMS template, sending, and delivery status.
+**Owns:** the notification template, sending, and delivery status.
 
 **Input:** `alert.triggered` plus the call's `Guardian`.
 
@@ -377,25 +375,25 @@ interface AlertSent {
   type: "alert.sent";
   callId: CallId;
   alertId: string;
-  channel: "sms";
-  status: "sent" | "failed";              // "sent" = Twilio accepted it, not handset delivery
-  providerId?: string;                    // Twilio message SID
+  channel: "notification";
+  status: "sent" | "failed";              // "sent" = provider accepted it, not device delivery
+  providerId?: string;                    // notification provider message ID
   error?: string;
   ts: number;
 }
 ```
 
-**SMS format (keep under ~300 characters):**
+**Notification format (body under ~180 characters, so a lock screen shows it all):**
 
 ```
-⚠️ Guardian Loop: possible scam call (risk 82).
-"Buy the gift cards and don't tell your daughter."
-Why: payment in gift cards + secrecy request.
-Live view: https://<host>/call/<callId>
+Title: ⚠️ Possible scam call (risk 82)
+Body:  "Buy the gift cards and don't tell your daughter."
+       Why: payment in gift cards + secrecy request.
+Tap:   https://<host>/call/<callId>
 ```
 
-**Done when:** a manual `alert.triggered` sends a text to a verified number and
-emits `alert.sent`.
+**Done when:** a manual `alert.triggered` sends a notification to a test guardian's
+device and emits `alert.sent`.
 
 ---
 
@@ -436,6 +434,20 @@ full call.
 
 **REST (call history):** `GET /api/calls` (list) and `GET /api/calls/:callId` (full
 record).
+
+```ts
+// GET /api/calls -> CallSummary[] (newest first); a `calls` row (§3.9) with _id as callId
+interface CallSummary {
+  callId: CallId; source: "webrtc"; from?: string; to?: string;
+  guardian: Guardian; startedAt: number; endedAt?: number;   // endedAt absent while live
+  maxScore: number; finalLevel: RiskLevel; alertCount: number;
+}
+// GET /api/calls/:callId -> CallRecord (404 if unknown)
+interface CallRecord {
+  call: CallSummary;
+  events: Array<{ callId: CallId; ts: number; type: string; payload: object }>;  // ts ascending
+}
+```
 
 **Done when:** the dashboard renders correctly from the mock WebSocket server
 (section 5) with no backend.
@@ -478,7 +490,7 @@ addition is a post-session summary built from the stored events.
 
 ## 5. Working in parallel: fixtures and mocks
 
-These let every workstream start immediately, without waiting for Twilio or a vendor.
+These let every workstream start immediately, without waiting for a live call or a vendor.
 
 | Tool | What it is | Who uses it |
 |---|---|---|
@@ -497,7 +509,7 @@ and the LLM prompt.
 
 | Workstream | Modules |
 |---|---|
-| A. Audio | Call ingestion, STT adapters, WebRTC fallback |
+| A. Audio | Call ingestion (WebRTC), STT adapters |
 | B. Core | Orchestrator, rules classifier, score engine |
 | C. AI | LLM classifier (prompt, schema, evaluation against fixtures) |
 | D. Frontend | Guardian dashboard |
@@ -507,9 +519,9 @@ and the LLM prompt.
 
 1. Fixture replay → rules → score → dashboard (no vendors).
 2. Swap replay for live STT on recorded audio.
-3. Swap recorded audio for a live Twilio call.
+3. Swap recorded audio for a live WebRTC call.
 4. Replace the mock LLM with Gemini.
-5. Turn on SMS alerts and MongoDB writes.
+5. Turn on guardian notifications and MongoDB writes.
 
 Each milestone swaps one mock for the real thing, so when something breaks, you know
 exactly which module caused it.

@@ -5,12 +5,11 @@
 
 ## Owns
 
-The Twilio webhook (TwiML), the Media Streams WebSocket, and the WebRTC fallback page.
+WebRTC signaling, peer connection setup, and capturing each participant's audio track.
 
 ## Input
 
-Twilio webhooks and Media Streams messages, or browser microphone audio for the
-WebRTC fallback.
+WebRTC audio tracks for the caller and the victim.
 
 ## Output events
 
@@ -22,20 +21,18 @@ Exact shapes are in the contract doc — import the types from
 
 ```
 call-ingestion/
-  twilio/       webhook handler + Media Streams WS
-  webrtc/       browser fallback signaling + audio capture
+  webrtc/       signaling + peer connection + per-track audio capture
   index.ts      publishes CallStarted / AudioFrame / CallEnded onto the event bus
 ```
 
-## Building without a live Twilio number
+## Building without a live call
 
 Use `fixtures/audio/*.wav` and `scripts/replay.ts` — see
 [`../../../../fixtures/README.md`](../../../../fixtures/README.md). You don't need a
-Twilio account to build and test the orchestrator/rules/score chain; you need one
-only to validate this module's own webhook + Media Streams wiring against a real call.
+live WebRTC session to build and test the orchestrator/rules/score chain; you need one
+only to validate this module's own signaling + audio capture against a real call.
 
 ## Done when
 
 A test call produces `call.started`, a steady stream of `audio.frame` for both
-speakers (confirm which Twilio track is the caller vs. victim), and `call.ended`. The
-WebRTC fallback emits the exact same three event types.
+speakers (confirm which track is the caller vs. victim), and `call.ended`.

@@ -12,9 +12,13 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "replay": "ts-node scripts/replay.ts"
+    "replay": "ts-node scripts/replay.ts",
+    "mock:dashboard": "vite-node mocks/dashboard-ws.ts --"
   },
   "devDependencies": {
-    "typescript": "^5.5.0"
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.5.0",
+    "vite-node": "^2.1.9",
+    "ws": "^8.22.0"
   }
 }

@@ -3,7 +3,7 @@
 **Owner:** shared — everyone contributes fixtures, everyone depends on them.
 **Contract:** [`docs/module-contracts.md`](../docs/module-contracts.md) §5
 
-The thing that lets all five workstreams start on day one without a Twilio account,
+The thing that lets all five workstreams start on day one without a live call,
 an STT vendor key, or a Gemini key: scripted calls that stand in for a real one.
 
 ## Contents

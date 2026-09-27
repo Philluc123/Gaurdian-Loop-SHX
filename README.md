@@ -2,7 +2,7 @@
 
 ShellHacks project. Guardian Loop listens to a phone call in real time, scores it for
 scam-call risk (impersonation, urgency, gift-card/wire payment requests, secrecy
-coaching, etc.), and alerts a designated guardian by SMS with a link to a live
+coaching, etc.), and alerts a designated guardian with a notification linking to a live
 dashboard of the call.
 
 Full input/output contracts for every module live in
@@ -19,7 +19,7 @@ holds per-call state, everything else is a pure/stateless function. Full diagram
 ```
 Call ingestion → STT adapter → Orchestrator → Rules classifier ┐
                                     │          LLM classifier   ├→ Score engine → Dashboard
-                                    │                                            → Alerts (SMS)
+                                    │                                            → Alerts (notifications)
                                     └──────────────────────────────────────────→ Event store (Mongo)
 ```
 
@@ -59,7 +59,7 @@ See [`fixtures/README.md`](fixtures/README.md) and [`mocks/README.md`](mocks/REA
 
 | Workstream | Modules | Folder(s) |
 |---|---|---|
-| A. Audio | Call ingestion, STT adapters, WebRTC fallback | `apps/server/src/call-ingestion`, `apps/server/src/stt-adapters` |
+| A. Audio | Call ingestion (WebRTC), STT adapters | `apps/server/src/call-ingestion`, `apps/server/src/stt-adapters` |
 | B. Core | Orchestrator, rules classifier, score engine | `apps/server/src/orchestrator`, `apps/server/src/rules-classifier`, `apps/server/src/score-engine` |
 | C. AI | LLM classifier (prompt, schema, eval) | `apps/server/src/llm-classifier` |
 | D. Frontend | Guardian dashboard | `apps/dashboard` |
@@ -69,9 +69,9 @@ See [`fixtures/README.md`](fixtures/README.md) and [`mocks/README.md`](mocks/REA
 
 1. Fixture replay → rules → score → dashboard (no vendors).
 2. Swap replay for live STT on recorded audio.
-3. Swap recorded audio for a live Twilio call.
+3. Swap recorded audio for a live WebRTC call.
 4. Replace the mock LLM with Gemini.
-5. Turn on SMS alerts and MongoDB writes.
+5. Turn on guardian notifications and MongoDB writes.
 
 Each milestone swaps exactly one mock for the real thing — when something breaks you
 know which module caused it.

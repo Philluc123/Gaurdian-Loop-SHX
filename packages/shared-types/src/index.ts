@@ -2,7 +2,7 @@
 // Everyone imports from here. Nobody redefines these locally.
 // If you need a new field or type, add it here AND in the doc, in the same PR.
 
-export type CallId = string; // Twilio CallSid, or a UUID for WebRTC calls
+export type CallId = string; // UUID assigned when the WebRTC session starts
 export type Speaker = "caller" | "victim";
 
 export type Signal =
@@ -127,14 +127,96 @@ export interface AlertSent {
   type: "alert.sent";
   callId: CallId;
   alertId: string;
-  channel: "sms";
-  status: "sent" | "failed"; // "sent" = provider accepted it, not handset delivery
-  providerId?: string; // Twilio message SID
+  channel: "notification";
+  status: "sent" | "failed"; // "sent" = provider accepted it, not device delivery
+  providerId?: string; // notification provider message ID
   error?: string;
   ts: number;
 }
 
+// --- STT adapter output (docs/module-contracts.md section 3.2) ---
+
+export interface TranscriptEvent {
+  type: "transcript";
+  callId: CallId;
+  speaker: Speaker;
+  segmentId: string; // partials share an ID until the final replaces them
+  text: string; // full text of the segment so far, not a delta
+  isFinal: boolean; // false = partial, true = committed
+  startMs: number;
+  endMs: number;
+  confidence?: number; // 0-1 if the vendor provides it
+  ts: number;
+}
+
+// --- Guardian dashboard WebSocket (docs/module-contracts.md section 3.8) ---
+
+export interface HighlightSpan {
+  start: number; // character offsets into the segment's text
+  end: number;
+  signal: Signal;
+}
+
+export interface SegmentHighlight extends HighlightSpan {
+  segmentId: string;
+}
+
+export interface DashboardSnapshot {
+  callId: CallId;
+  startedAt: number;
+  turns: Turn[];
+  score: number;
+  level: RiskLevel;
+  signals: Signal[];
+  highlights: SegmentHighlight[];
+  alerts: AlertTriggered[];
+}
+
+export type ClientMsg =
+  | { type: "subscribe"; callId: CallId | "latest" }
+  | { type: "ack_alert"; alertId: string }
+  | { type: "join_call"; callId: CallId }; // stretch
+
+export type ServerMsg =
+  | { type: "snapshot"; call: DashboardSnapshot }
+  | { type: "transcript"; event: TranscriptEvent } // partials and finals
+  | { type: "highlights"; segmentId: string; isFinal: boolean; spans: HighlightSpan[] }
+  | { type: "score"; event: ScoreUpdated }
+  | { type: "alert"; event: AlertTriggered; delivery?: AlertSent["status"] }
+  | { type: "call_ended"; callId: CallId; ts: number };
+
+// --- Call history REST (docs/module-contracts.md sections 3.8, 3.9) ---
+
+// GET /api/calls -> CallSummary[]; one row of the `calls` collection, with `_id`
+// exposed as `callId`.
+export interface CallSummary {
+  callId: CallId;
+  source: "webrtc";
+  from?: string;
+  to?: string;
+  guardian: Guardian;
+  startedAt: number;
+  endedAt?: number; // absent while the call is live
+  maxScore: number;
+  finalLevel: RiskLevel;
+  alertCount: number;
+}
+
+// One row of the `events` collection.
+export interface StoredEvent {
+  callId: CallId;
+  ts: number;
+  type: string;
+  payload: object;
+}
+
+// GET /api/calls/:callId -> CallRecord; events ordered by ts ascending.
+export interface CallRecord {
+  call: CallSummary;
+  events: StoredEvent[];
+}
+
 // TODO(workstream owners): as each module's events stabilize, add their
-// interfaces here too (CallStarted, AudioFrame, TranscriptEvent,
-// ClientMsg/ServerMsg) so both apps/server and apps/dashboard import
-// the same definitions. Full shapes are in docs/module-contracts.md section 3.
+// interfaces here too (CallStarted, AudioFrame, CallEnded) so both apps/server
+// and apps/dashboard import the same definitions. Full shapes are in
+// docs/module-contracts.md section 3.

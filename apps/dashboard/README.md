@@ -28,12 +28,24 @@ the full call state, not just wait for the next incremental update.
 ## Running locally without a backend
 
 ```bash
-npm run dev --workspace=@guardian-loop/dashboard
+npm run mock:dashboard -- --speed 2                  # terminal 1: mock backend on :3000
+npm run dev --workspace=@guardian-loop/dashboard     # terminal 2: http://localhost:5173
 ```
 
-Point the WebSocket client at `mocks/dashboard-ws.ts` instead of the real server (see
-[`../../mocks/README.md`](../../mocks/README.md)) — it streams `ServerMsg`s from a
-fixture file, so you can build and demo the whole UI before the backend exists.
+The mock ([`../../mocks/dashboard-ws.ts`](../../mocks/dashboard-ws.ts)) replays
+`fixtures/calls/*.jsonl` through the real rules classifier and score engine and serves
+the same WebSocket + REST contract as the real server, so the whole UI can be built
+and demoed before the backend exists. The Vite dev server proxies `/ws/dashboard` and
+`/api` to `BACKEND_URL` (default `http://localhost:3000`), so switching to the real
+server is just starting it on that port instead.
+
+| Page | What it shows |
+|---|---|
+| `/` | Follows the latest call; switches automatically when a new one starts |
+| `/call/:callId` | One call — the live-view link in the guardian's notification |
+| `/history`, `/history/:callId` | Past calls and one call's stored record |
+
+Overrides: `VITE_DASHBOARD_WS_URL` (full ws URL) and `VITE_API_BASE` skip the proxy.
 
 ## Done when
 

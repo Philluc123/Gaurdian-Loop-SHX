@@ -2,7 +2,7 @@
 
 Recorded μ-law (or pcm16) `.wav` audio, one file per speaker per call, used to
 build and test the STT adapters (`apps/server/src/stt-adapters`) against real audio
-without a live Twilio call.
+without a live WebRTC call.
 
 ## Naming
 
@@ -12,7 +12,7 @@ transcript fixture can be cross-checked.
 
 ## Format
 
-Match what Twilio Media Streams actually sends: 8kHz mulaw by default (see
+Match what call ingestion actually emits (see
 `AudioFrame.encoding`/`sampleRate` in
 [`docs/module-contracts.md`](../../docs/module-contracts.md) §3.1-3.2). If you record
 at 16kHz pcm16 for clarity, note it in the filename or a sidecar `.json` so adapters
