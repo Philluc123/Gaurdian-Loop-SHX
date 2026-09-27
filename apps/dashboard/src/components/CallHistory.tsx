@@ -1,7 +1,8 @@
 import type { AlertTriggered, CallRecord, CallSummary, TranscriptEvent } from "@guardian-loop/shared-types";
 import { fetchCall, fetchCalls, useLoad } from "../api";
-import { LEVEL_ICON, LEVEL_LABEL, SPEAKER_LABEL, clock, dateTime, timeOfDay } from "../format";
+import { LEVEL_LABEL, SPEAKER_LABEL, clock, dateTime, timeOfDay } from "../format";
 import { Link } from "../router";
+import { LevelIcon } from "./Icon";
 
 export function CallHistory({ selected }: { selected?: string }) {
   const list = useLoad(fetchCalls, "calls", 5000);
@@ -33,7 +34,7 @@ function CallRow({ call, active }: { call: CallSummary; active: boolean }) {
     <li>
       <Link to={`/history/${encodeURIComponent(call.callId)}`} className={`call-row${active ? " active" : ""}`}>
         <span className={`level-badge level-${call.finalLevel}`}>
-          <span aria-hidden="true">{LEVEL_ICON[call.finalLevel]}</span> {call.maxScore}
+          <LevelIcon level={call.finalLevel} size={14} /> {call.maxScore}
         </span>
         <span className="call-row-main">
           <span className="call-row-title">{call.from ?? "Unknown caller"}</span>
@@ -73,7 +74,7 @@ function CallRecordView({ record }: { record: CallRecord }) {
           <dt>Peak risk</dt>
           <dd>
             <span className={`level-badge level-${call.finalLevel}`}>
-              <span aria-hidden="true">{LEVEL_ICON[call.finalLevel]}</span> {call.maxScore} · {LEVEL_LABEL[call.finalLevel]}
+              <LevelIcon level={call.finalLevel} size={14} /> {call.maxScore} · {LEVEL_LABEL[call.finalLevel]}
             </span>
           </dd>
         </div>

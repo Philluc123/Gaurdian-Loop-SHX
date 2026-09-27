@@ -2,11 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#e7fdfb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#071a20" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <title>Guardian Loop</title>
+    <script>
+      // Apply the stored theme before first paint (see src/theme.ts), so a dark-mode
+      // guardian never sees a flash of the light page.
+      try {
+        var t = localStorage.getItem("gl-theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
   </head>
   <body>
+    <!--
+      THESIS: The guardian's question is "is my relative being scammed right now?" The answer
+      leads as one large risk ring; reports and summary follow; the transcript is the evidence
+      last. Refuses the metric-tile dashboard of equal cards.
+      OWN-WORLD: Brand ground #e7fdfb, black ink, primary blue #1d5a9d for actions and
+      navigation, teal #4eb8b3 as calm (low risk). Risk scale teal / amber / red, each paired
+      with its own drawn icon and label. White panels, 16px radius, soft offset shadow; dark
+      mode on a deep blue-teal ground. Atkinson Hyperlegible Next throughout.
+      STORY: A worried family member opens this from a notification, sees the risk and why in
+      one glance, reads the scammer's own words in the report, and scrolls to the transcript
+      for proof.
+      FIRST VIEWPORT: Logo, name and alerts/theme controls on top; views as tabs. Centered ring
+      (~264px on a phone) with the score inside, the level pill and one-line reason beneath,
+      signal chips below that.
+      FORM: Brief-pinned by the user (palette, order, ring hero, light/dark); no concept roll.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

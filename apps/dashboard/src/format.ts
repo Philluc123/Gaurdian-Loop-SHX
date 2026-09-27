@@ -8,11 +8,11 @@ export const SIGNAL_LABEL: Record<Signal, string> = {
   SECRECY: "Secrecy",
   UNTRACEABLE_PAYMENT: "Untraceable payment",
   REMOTE_ACCESS: "Remote access",
-  CREDENTIAL_REQUEST: "Credential request",
+  CREDENTIAL_REQUEST: "Asked for sensitive info",
   THREAT: "Threat",
-  VICTIM_COMPLIANCE: "Victim complying",
-  VICTIM_DISCLOSURE: "Victim disclosing",
-  VICTIM_RESISTANCE: "Victim pushing back",
+  VICTIM_COMPLIANCE: "Going along",
+  VICTIM_DISCLOSURE: "Sharing personal info",
+  VICTIM_RESISTANCE: "Pushing back",
 };
 
 /** Highlight tone: caller tactics, the victim going along with them, or pushing back. */
@@ -27,8 +27,6 @@ export const LEVEL_LABEL: Record<RiskLevel, string> = {
   elevated: "Elevated risk",
   high: "High risk",
 };
-
-export const LEVEL_ICON: Record<RiskLevel, string> = { low: "✓", elevated: "!", high: "⚠" };
 
 export const SPEAKER_LABEL: Record<Speaker, string> = { caller: "Caller", victim: "Protected person" };
 

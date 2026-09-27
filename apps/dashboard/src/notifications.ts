@@ -30,9 +30,21 @@ export function liveViewPath(callId: string): string {
   return `/call/${encodeURIComponent(callId)}`;
 }
 
+/**
+ * The dashboard shows no emoji. The server's template leads the title with a warning
+ * sign; drop emoji and their variation selectors here rather than change the alerts
+ * module, whose tests pin that template.
+ */
+export function withoutEmoji(text: string): string {
+  return text
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function show(msg: NotificationMsg): void {
-  if (currentPermission() !== "granted") return; // the in-page banner still shows it
-  const n = new Notification(msg.title, {
+  if (currentPermission() !== "granted") return; // the in-page report still shows it
+  const n = new Notification(withoutEmoji(msg.title), {
     body: msg.body,
     // Same tag replaces instead of stacking, so a retry or a second open tab
     // doesn't pile up duplicates.

@@ -531,3 +531,37 @@ describe("orchestrator: LLM trigger policy (M4)", () => {
     expect(ofType("alert.triggered")).toHaveLength(0);
   });
 });
+
+describe("orchestrator: a direct request for sensitive information alerts at once", () => {
+  const say = (callId: string, segmentId: string, text: string) =>
+    bus.publish({
+      type: "transcript", callId, speaker: "caller", segmentId, text, isFinal: true,
+      startMs: 0, endMs: 1000, ts: 1000,
+    });
+
+  for (const text of [
+    "Give me your social security number.",
+    "I need your bank account number and your routing number.",
+    "What's your password for online banking?",
+    "Can you read me your Medicare number?",
+    "Tell me the PIN for your debit card.",
+  ]) {
+    it(`alerts on the first sentence: "${text}"`, () => {
+      startCall("c1");
+      say("c1", "s1", text);
+      const alerts = ofType("alert.triggered") as AlertTriggered[];
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].reason).toContain("request for sensitive information");
+    });
+  }
+
+  it("does not alert when the protected person mentions their own details", () => {
+    startCall("c1");
+    bus.publish({
+      type: "transcript", callId: "c1", speaker: "victim", segmentId: "s1",
+      text: "I keep my bank account number in a notebook.", isFinal: true,
+      startMs: 0, endMs: 1000, ts: 1000,
+    });
+    expect(ofType("alert.triggered")).toHaveLength(0);
+  });
+});

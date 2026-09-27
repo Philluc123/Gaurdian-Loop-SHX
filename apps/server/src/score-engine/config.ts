@@ -47,6 +47,11 @@ export interface Combo {
 // Only rule-backed signals (source "rules" or "both") complete a combo. The LLM's
 // view of combos is already baked into its own score estimate.
 export const COMBOS: Combo[] = [
+  // Instant alert: a caller directly asking for sensitive information (Social Security,
+  // bank, card, PIN, password, one-time code, Medicare number) is the scam itself, so it
+  // alerts the family on that sentence rather than waiting for a second signal. A floor
+  // of 85 clears ALERT_THRESHOLD, and it holds for the rest of the call.
+  { id: "sensitive_info_request", signals: ["CREDENTIAL_REQUEST"], bonus: 50, floor: 85 },
   // Hard combos: each is a textbook scam pattern, so the floor alone crosses the threshold.
   { id: "secrecy+payment", signals: ["SECRECY", "UNTRACEABLE_PAYMENT"], bonus: 25, floor: 75 },
   { id: "impersonation+payment", signals: ["IMPERSONATION", "UNTRACEABLE_PAYMENT"], bonus: 20, floor: 75 },
@@ -67,9 +72,9 @@ export const SIGNAL_LABELS: Record<Signal, string> = {
   SECRECY: "secrecy request",
   UNTRACEABLE_PAYMENT: "untraceable payment request",
   REMOTE_ACCESS: "remote access request",
-  CREDENTIAL_REQUEST: "credential request",
+  CREDENTIAL_REQUEST: "request for sensitive information",
   THREAT: "threats",
-  VICTIM_COMPLIANCE: "victim complying",
-  VICTIM_DISCLOSURE: "victim disclosing info",
-  VICTIM_RESISTANCE: "victim pushing back",
+  VICTIM_COMPLIANCE: "protected person going along",
+  VICTIM_DISCLOSURE: "protected person sharing personal info",
+  VICTIM_RESISTANCE: "protected person pushing back",
 };

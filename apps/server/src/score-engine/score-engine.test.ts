@@ -339,3 +339,19 @@ describe("LLM floor", () => {
     expect(run([llm(90), llm(0, { reason: "llm_error" }), llm(90)]).state.floor).toBe(90);
   });
 });
+
+describe("direct requests for sensitive information", () => {
+  it("alert the family on the first request, with no other signal needed", () => {
+    const { state, alerts } = run([rules([hit("CREDENTIAL_REQUEST", 38, "credential.ssn")])]);
+    expect(state.score).toBeGreaterThanOrEqual(ALERT_THRESHOLD);
+    expect(state.floor).toBe(85);
+    expect(alerts).toHaveLength(1);
+    expect(state.lastReason).toBe("request for sensitive information");
+  });
+
+  it("hold the alert level for the rest of the call — decay can't talk it back down", () => {
+    const { state, alerts } = run([rules([hit("CREDENTIAL_REQUEST", 36)]), ...ticks(300)]);
+    expect(state.score).toBeGreaterThanOrEqual(85);
+    expect(alerts).toHaveLength(1);
+  });
+});

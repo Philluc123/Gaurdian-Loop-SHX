@@ -211,6 +211,33 @@ export const RULES: Rule[] = [
     ],
   },
   {
+    id: "credential.bank",
+    signal: "CREDENTIAL_REQUEST",
+    speaker: "caller",
+    weight: 36,
+    patterns: [
+      pat(["your", "bank", "account", "number"]),
+      pat(["your", "checking", "account", "number"]),
+      pat(["your", "routing", "number"]),
+      pat(["routing", "and", "account", "number"]),
+    ],
+  },
+  {
+    id: "credential.login",
+    signal: "CREDENTIAL_REQUEST",
+    speaker: "caller",
+    weight: 36,
+    patterns: [pat(["your", "password"]), pat(["your", "passcode"]), pat(["your", "login"])],
+  },
+  {
+    id: "credential.medicare",
+    signal: "CREDENTIAL_REQUEST",
+    speaker: "caller",
+    weight: 36,
+    // "your" keeps a caller merely naming Medicare (impersonation) from counting here.
+    patterns: [pat(["your", "medicare", "number"]), pat(["your", "medicare", "card", "number"]), pat(["your", "medicare", "id"])],
+  },
+  {
     id: "credential.read_out",
     signal: "CREDENTIAL_REQUEST",
     speaker: "caller",

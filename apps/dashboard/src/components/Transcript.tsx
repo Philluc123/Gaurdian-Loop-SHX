@@ -24,14 +24,16 @@ export function Transcript({ segments, highlights, live }: Props) {
   };
 
   return (
-    <section className="card transcript" aria-label="Transcript">
-      <header className="card-head">
-        <h2>Transcript</h2>
+    <section className="transcript" aria-labelledby="transcript-title">
+      <header className="section-head">
+        <h2 id="transcript-title" className="section-title">
+          Transcript
+        </h2>
         {live && <span className="live-dot">Live</span>}
       </header>
-      <div className="transcript-body" ref={scroller} onScroll={onScroll} aria-live="polite">
+      <div className="panel transcript-body" ref={scroller} onScroll={onScroll} aria-live="polite">
         {segments.length === 0 ? (
-          <p className="empty">Waiting for the first words…</p>
+          <p className="transcript-empty">Waiting for the first words. Risky phrases are highlighted as they're spoken.</p>
         ) : (
           segments.map((seg) => (
             <TurnRow key={seg.segmentId} seg={seg} spans={highlights[seg.segmentId]?.spans ?? []} />
