@@ -78,7 +78,7 @@ export interface TranscriptEvent {
   ts: number;
 }
 
-export type SttProvider = "elevenlabs" | "deepgram" | "azure";
+export type SttProvider = "deepgram";
 
 export interface SttSession {
   sendAudio(frame: AudioFrame): void;
@@ -120,14 +120,14 @@ export interface RulesHitsEvent {
 export interface LLMRequest {
   callId: CallId;
   seq: number;
-  trigger: "rule" | "victim" | "heartbeat";
+  trigger: "rule" | "victim" | "heartbeat" | "final"; // final: the call just ended
   state: {
     score: number;
     signals: Signal[];
     elapsedSec: number;
     carryContext: string; // e.g. "caller claims to be from Medicare"
   };
-  turns: Array<{ speaker: Speaker; text: string }>; // last 4-6 final turns
+  turns: Array<{ speaker: Speaker; text: string }>; // final turns in the rolling window (<=10)
 }
 
 export interface LLMResult {
@@ -153,11 +153,12 @@ export interface ScoreTick {
 
 export interface ScoreState {
   score: number;
-  floor: number; // minimum set by hard rule combos; LLM can't go below it
+  floor: number; // sticky minimum: hard rule combos, or two consecutive confident LLM reads
   level: RiskLevel;
   signals: Partial<Record<Signal, { source: "rules" | "llm" | "both"; firstSeenMs: number }>>;
   alertArmed: boolean; // re-arms after score drops well below threshold
   lastReason: string;
+  lastLlmScore: number | null; // previous successful LLM estimate, for the LLM floor
 }
 
 export interface ScoreUpdated {

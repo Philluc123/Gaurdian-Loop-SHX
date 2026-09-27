@@ -10,6 +10,7 @@ import {
   CALL_PAGE_PATH,
   WEBRTC_WS_PATH,
   loadGuardian,
+  loadLlmConfig,
   loadServerConfig,
   loadSttConfig,
   loadWebRtcConfig,
@@ -18,23 +19,23 @@ import {
 import { bus } from "./event-bus";
 import { createWebRtcIngestion } from "./call-ingestion/webrtc";
 import { createMemoryEventStore } from "./event-store/memory";
+import { createClassifier } from "./llm-classifier";
 import { createOrchestrator } from "./orchestrator";
 import { createDashboardAlerter } from "./orchestrator/dashboard-alerts";
 import { createDashboardFeed, type DashboardFeed } from "./orchestrator/dashboard-feed";
-import { createSttAdapter, createSttBridge } from "./stt-adapters";
+import { createSttAdapter } from "./stt-adapters";
 import { createTranscriptLog } from "./transcript-log";
-
-// TODO: the LLM trigger policy (M4) registers through the orchestrator when it's
-// wired in.
 
 function main(): void {
   const serverCfg = loadServerConfig();
   const sttCfg = loadSttConfig();
   const webrtcCfg = loadWebRtcConfig();
+  const llmCfg = loadLlmConfig();
   const guardian = loadGuardian();
-  warnAboutGaps(serverCfg, sttCfg, webrtcCfg);
+  warnAboutGaps(serverCfg, sttCfg, webrtcCfg, llmCfg);
 
   const app = express();
+  const stt = createSttAdapter(sttCfg);
 
   const ingestion = createWebRtcIngestion({
     webrtc: webrtcCfg,
@@ -46,12 +47,11 @@ function main(): void {
   app.get("/healthz", (_req, res) => {
     res.json({
       ok: true,
-      sttProvider: sttCfg.provider,
+      sttProvider: stt.name,
+      llmModel: llmCfg.gemini.apiKey ? llmCfg.gemini.model : null,
       activeCalls: ingestion.activeCallIds,
     });
   });
-
-  const bridge = createSttBridge(bus, createSttAdapter(sttCfg));
 
   // Order matters: the dashboard feed pushes a snapshot on call.started, which
   // needs the orchestrator to have created that call's state first, and bus
@@ -61,7 +61,23 @@ function main(): void {
   // yet when the orchestrator is built — hence the getter, resolved at send time.
   let feedForAlerts: DashboardFeed | undefined;
   const orchestrator = createOrchestrator(bus, {
+    stt,
     sendAlert: createDashboardAlerter(() => feedForAlerts),
+    // No key, no LLM: scoring runs on rules alone rather than logging an
+    // llm_error for every trigger.
+    classify: llmCfg.gemini.apiKey
+      ? createClassifier({ apiKey: llmCfg.gemini.apiKey, model: llmCfg.gemini.model })
+      : undefined,
+    llmHeartbeatMs: llmCfg.heartbeatSec * 1000,
+    // What the LLM is actually reading, for tuning the trigger policy and prompt.
+    onLlmRequest: (req) => {
+      console.log(
+        `[LLM >] seq=${req.seq} trigger=${req.trigger} @${req.state.elapsedSec.toFixed(0)}s ` +
+          `score=${req.state.score} turns=${req.turns.length}`
+      );
+      if (req.state.carryContext) console.log(`        memory: ${req.state.carryContext}`);
+      for (const t of req.turns) console.log(`        ${t.speaker.padEnd(6)} ${t.text}`);
+    },
   });
   const dashboardFeed = createDashboardFeed(bus, orchestrator);
   feedForAlerts = dashboardFeed;
@@ -94,6 +110,14 @@ function main(): void {
     if (e.source === "decay") return;
     console.log(`[SCORE] ${String(e.score).padStart(3)} ${e.level.padEnd(8)} (${e.source}) ${e.reason}`);
   });
+  bus.subscribe("llm.result", (e) => {
+    const signals = e.signals.length ? ` [${e.signals.join(", ")}]` : "";
+    console.log(
+      `[LLM <] seq=${e.seq} ${e.latencyMs}ms (${e.model}) score=${e.score}` +
+        `${e.benignContext ? " benign" : ""}${signals}: ${e.reason}`
+    );
+    if (e.reason !== "llm_error") console.log(`        memory: ${e.carryContext}`);
+  });
   bus.subscribe("alert.triggered", (e) => {
     console.log(`[ALERT] risk ${e.score} >= ${e.threshold}: ${e.reason}`);
   });
@@ -125,7 +149,10 @@ function main(): void {
       : "";
 
     console.log(`[server] listening on http://localhost:${serverCfg.port}`);
-    console.log(`[server] STT provider: ${sttCfg.provider}`);
+    console.log(`[server] STT provider: ${stt.name}`);
+    console.log(
+      `[server] LLM: ${llmCfg.gemini.apiKey ? `${llmCfg.gemini.model}, heartbeat ${llmCfg.heartbeatSec}s` : "off (no GEMINI_API_KEY)"}`
+    );
     console.log(
       `[server] capture: ${webrtcCfg.encoding} @ ${webrtcCfg.sampleRate}Hz, ` +
         `attribution gate ${webrtcCfg.gate.enabled ? "on" : "off"}`
@@ -166,9 +193,8 @@ function main(): void {
     dashboardFeed.close();
     orchestrator.stop();
     eventStore.stop();
-    bridge.stop();
     transcriptLog?.stop();
-    void bridge.closeAll().finally(() => {
+    void orchestrator.closeSessions().finally(() => {
       server.close(() => process.exit(0));
       // Don't hang forever on a socket that refuses to close.
       setTimeout(() => process.exit(0), 3_000).unref();

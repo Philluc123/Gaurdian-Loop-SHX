@@ -381,3 +381,43 @@ describe("runRules", () => {
     });
   });
 });
+
+// From a live test call (2026-09-27): the caller asked for an SSN and a credit card
+// number, and speech-to-text split the SSN request across two lines.
+describe("runRules: credential requests split across lines", () => {
+  const signals = (hits: ReturnType<typeof runRules>) => hits.map((h) => h.signal);
+
+  it("catches a Social Security request split at a pause", () => {
+    const hits = runRules({
+      speaker: "caller",
+      text: "Social Security number. Yeah.",
+      previousText: "Next up, go ahead and go ahead and hand me your",
+    });
+    expect(signals(hits)).toContain("CREDENTIAL_REQUEST");
+    // Offsets are clipped to this line, for highlighting.
+    const ssn = hits.find((h) => h.ruleId === "credential.ssn")!;
+    expect(ssn.start).toBe(0);
+    expect("Social Security number. Yeah.".slice(ssn.start, ssn.end)).toBe("Social Security number");
+  });
+
+  it("doesn't re-report a match that sits wholly inside the previous line", () => {
+    const hits = runRules({
+      speaker: "caller",
+      text: "Thanks, that's all.",
+      previousText: "Now read me your social security number.",
+    });
+    expect(hits).toEqual([]);
+  });
+
+  it("catches a credit card number request", () => {
+    const hits = runRules({
+      speaker: "caller",
+      text: "go ahead off your credit card number too. Yeah. Read it out. Yeah. Need that as well.",
+    });
+    expect(hits.map((h) => h.ruleId)).toEqual(expect.arrayContaining(["credential.card", "credential.read_out"]));
+  });
+
+  it("ignores a caller mentioning their own card number", () => {
+    expect(runRules({ speaker: "caller", text: "My card number is on file already." })).toEqual([]);
+  });
+});

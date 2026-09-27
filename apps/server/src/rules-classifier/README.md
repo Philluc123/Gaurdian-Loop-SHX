@@ -10,7 +10,11 @@ The pattern list, weights, and speaker scoping for rule-based signal detection.
 ## Interface (pure function — no side effects, no bus access)
 
 ```ts
-function runRules(input: { speaker: Speaker; text: string }): RuleHit[];
+function runRules(input: {
+  speaker: Speaker;
+  text: string;
+  previousText?: string;   // same speaker's previous line; phrases split across the two still match
+}): RuleHit[];
 
 interface RuleHit {
   ruleId: string;      // e.g. "payment.gift_card"

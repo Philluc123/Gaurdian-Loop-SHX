@@ -59,7 +59,6 @@ Copy `.env.example` to `.env` **in the repo root** and fill in:
 PUBLIC_BASE_URL=https://<your-tunnel-host>      # no trailing slash
 WEBRTC_ROOM_SECRET=<any random string>
 DEEPGRAM_API_KEY=<your key>
-STT_PROVIDER=deepgram
 ```
 
 Put comments on their own lines, not after a value.

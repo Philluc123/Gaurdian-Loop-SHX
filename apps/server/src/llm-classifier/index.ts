@@ -5,7 +5,7 @@
 // error, timeout, or malformed response it resolves with `signals: []` and
 // `reason: "llm_error"` so the orchestrator's pipeline never blocks.
 
-import { GoogleGenAI, type GenerateContentParameters } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, type GenerateContentParameters, type ThinkingConfig } from "@google/genai";
 import type { LLMRequest, LLMResult } from "@guardian-loop/shared-types";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt";
 import { parseLLMOutput, RESPONSE_SCHEMA } from "./schema";
@@ -13,7 +13,8 @@ import { parseLLMOutput, RESPONSE_SCHEMA } from "./schema";
 export { SYSTEM_PROMPT, buildUserPrompt } from "./prompt";
 export { RESPONSE_SCHEMA, parseLLMOutput, SIGNALS } from "./schema";
 
-export const DEFAULT_MODEL = "gemini-2.5-flash-lite";
+// gemini-2.5-flash-lite is closed to new API keys (404), so 3.5 is the default.
+export const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 export const DEFAULT_TIMEOUT_MS = 3000;
 export const LLM_ERROR_REASON = "llm_error";
 
@@ -21,6 +22,8 @@ export const LLM_ERROR_REASON = "llm_error";
 export type GenerateFn = (params: GenerateContentParameters) => Promise<{ text?: string }>;
 
 export interface ClassifierOptions {
+  /** Gemini API key (from config.ts). Without it every call resolves with `llm_error`. */
+  apiKey?: string;
   generate?: GenerateFn;
   model?: string;
   timeoutMs?: number;
@@ -30,12 +33,11 @@ export interface ClassifierOptions {
 export function createClassifier(opts: ClassifierOptions = {}): (req: LLMRequest) => Promise<LLMResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const now = opts.now ?? Date.now;
+  const model = opts.model || DEFAULT_MODEL;
   let generate = opts.generate;
 
   return async function classify(req: LLMRequest): Promise<LLMResult> {
     const startedAt = now();
-    // Env is read per call (not at import) so dotenv can load after this module.
-    const model = opts.model ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
     const finish = (fields: Omit<LLMResult, "type" | "callId" | "seq" | "latencyMs" | "model" | "ts">): LLMResult => {
       const ts = now();
       return { type: "llm.result", callId: req.callId, seq: req.seq, ...fields, latencyMs: ts - startedAt, model, ts };
@@ -56,7 +58,7 @@ export function createClassifier(opts: ClassifierOptions = {}): (req: LLMRequest
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      generate ??= defaultGenerate();
+      generate ??= defaultGenerate(opts.apiKey);
 
       const call = generate({
         model,
@@ -67,7 +69,7 @@ export function createClassifier(opts: ClassifierOptions = {}): (req: LLMRequest
           responseJsonSchema: RESPONSE_SCHEMA,
           temperature: 0,
           maxOutputTokens: 256,
-          thinkingConfig: { thinkingBudget: 0 },
+          thinkingConfig: thinkingConfigFor(model),
           abortSignal: controller.signal,
         },
       });
@@ -91,21 +93,39 @@ export function createClassifier(opts: ClassifierOptions = {}): (req: LLMRequest
   };
 }
 
-function defaultGenerate(): GenerateFn {
-  const apiKey = process.env.GEMINI_API_KEY;
+/**
+ * As little thinking as each generation allows, for latency. Gemini 3+ rejects
+ * `thinkingBudget` with a bare 400 INVALID_ARGUMENT and takes `thinkingLevel`;
+ * 2.x is the other way round.
+ */
+export function thinkingConfigFor(model: string): ThinkingConfig {
+  return /^gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: ThinkingLevel.MINIMAL };
+}
+
+function defaultGenerate(apiKey: string | undefined): GenerateFn {
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
   const ai = new GoogleGenAI({ apiKey });
   return (params) => ai.models.generateContent(params);
 }
 
-function describe(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+/**
+ * One loggable line. Gemini's errors are raw JSON bodies that can quote the API
+ * key back (e.g. "Consumer 'api_key:AIza…' has been suspended"), so keys are
+ * redacted and the body is reduced to its code, status and message.
+ */
+export function describe(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  let text = raw;
+  try {
+    const body = JSON.parse(raw) as { error?: { code?: number; status?: string; message?: string } };
+    if (body.error) text = [body.error.code, body.error.status, body.error.message].filter(Boolean).join(" ");
+  } catch {
+    // Not JSON: log the message as-is.
+  }
+  return truncate(text.replace(/AIza[0-9A-Za-z_-]{20,}/g, "AIza…[redacted]"), 300);
 }
 
 function truncate(s: string | undefined, max = 200): string {
   if (s === undefined) return "<empty>";
   return s.length > max ? s.slice(0, max) + "…" : s;
 }
-
-/** Default classifier reading GEMINI_API_KEY / GEMINI_MODEL from the environment. */
-export const classify = createClassifier();

@@ -24,9 +24,20 @@ enforced to:
 
 ## Configuration
 
-- `GEMINI_API_KEY`: required. Without it, every call resolves with `llm_error`.
-- `GEMINI_MODEL`: optional. The default is `gemini-2.5-flash-lite`. Settings are
-  temperature 0, thinking budget 0, and max 256 output tokens.
+Config comes in as arguments: `createClassifier({ apiKey, model })`. `config.ts`
+(`loadLlmConfig`) reads the env, and this module never touches `process.env`.
+
+- `GEMINI_API_KEY`: required. With no key, the server doesn't wire the LLM at all, and a
+  classifier created without one resolves every call with `llm_error`.
+- `GEMINI_MODEL`: optional. The default is `gemini-3.5-flash-lite`
+  (`gemini-2.5-flash-lite` returns 404 for new API keys). Settings are temperature 0,
+  minimal thinking, and max 256 output tokens. Gemini 3+ takes
+  `thinkingLevel: MINIMAL` and rejects `thinkingBudget` with a bare 400; 2.x takes
+  `thinkingBudget: 0`. `thinkingConfigFor(model)` picks the right one.
+  `gemini-3.5-flash` (not lite) regularly takes more than 3s, so it times out.
+- `LLM_HEARTBEAT_SEC` (read by the orchestrator, default 15 while testing): how long new speech can
+  go unread before the LLM is called anyway. See the orchestrator README for the
+  whole trigger policy.
 - Tests inject a fake client with `createClassifier({ generate })`, so they need no API key.
 
 ## Failure handling
