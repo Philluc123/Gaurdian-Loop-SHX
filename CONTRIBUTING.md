@@ -26,7 +26,7 @@ locally in your module "just for now" — it will silently drift.
 
 Every module has fixtures and mocks so you never block on a teammate or a vendor:
 
-- Call ingestion not built yet? Use `fixtures/calls/*.jsonl` + `scripts/replay.ts`.
+- No live WebRTC call yet? Use `fixtures/calls/*.jsonl` + `scripts/replay.ts`.
 - No LLM key yet? Use `mocks/llm.ts`.
 - No backend running yet? Point the dashboard at `mocks/dashboard-ws.ts`.
 
@@ -41,5 +41,5 @@ fixtures, independent of whether any other module is finished.
 ## Integration order
 
 Don't try to wire the real WebRTC call, real STT, real Gemini, real Mongo, and real
-guardian notifications together on day one. Follow the integration milestones in the root README —
+notifications together on day one. Follow the integration milestones in the root README —
 swap one mock for the real thing at a time.

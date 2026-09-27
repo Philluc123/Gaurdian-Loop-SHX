@@ -15,7 +15,7 @@ events it needs and publishes its own.
 
 ```mermaid
 flowchart LR
-  TW[Call ingestion<br/>browser WebRTC] -- audio.frame --> STT[STT adapter]
+  TW[Call ingestion<br/>WebRTC] -- audio.frame --> STT[STT adapter]
   TW -- call.started / call.ended --> ORC
   STT -- transcript --> ORC[Orchestrator<br/>call state]
   ORC -- segment --> RUL[Rules classifier]
@@ -25,7 +25,7 @@ flowchart LR
   ORC -- rules.hits / llm.result / tick --> SCO[Score engine]
   SCO -- score.updated / alert.triggered --> ORC
   ORC -- WebSocket messages --> DASH[Guardian dashboard]
-  ORC -- alert.triggered --> ALR[Alerts / guardian notification]
+  ORC -- alert.triggered --> ALR[Alerts / notifications]
   ALR -- alert.sent --> ORC
   ORC -- all events --> DB[(Event store<br/>MongoDB)]
 ```
@@ -41,7 +41,7 @@ which makes them easy to build and test in isolation.
 Everyone imports from this package. Nobody redefines these locally.
 
 ```ts
-export type CallId = string;              // a UUID per call
+export type CallId = string;              // UUID assigned when the WebRTC session starts
 export type Speaker = "caller" | "victim";
 
 export type Signal =
@@ -94,9 +94,8 @@ module will be able to subscribe to it.
 
 ### 3.1 Call ingestion (browser WebRTC)
 
-> **Changed:** Twilio has been dropped from the project. Browser WebRTC is now the
-> only ingestion path, not a fallback. `CallStarted.source` keeps `"twilio"` in the
-> union so stored events from earlier testing still typecheck.
+> **Changed:** Twilio has been dropped from the project. Browser WebRTC is the only
+> ingestion path, not a fallback.
 
 **Owns:** the WebRTC signalling server, the browser call page, the audio fork that
 carries each participant's own microphone to the server, and the speaker-attribution
@@ -113,8 +112,8 @@ server, which is where the three events below come from.
 interface CallStarted {
   type: "call.started";
   callId: CallId;
-  source: "twilio" | "webrtc";            // always "webrtc" now
-  from?: string;                          // display label, not a phone number
+  source: "webrtc";
+  from?: string;                          // display label, e.g. "room:demo" - not a phone number
   to?: string;
   guardian: Guardian;                     // hard-coded config for the demo
   ts: number;
@@ -345,14 +344,23 @@ ignores instructions spoken inside the transcript.
 ```ts
 function updateScore(
   prev: ScoreState,
-  input: RulesHitsEvent | LLMResult | { type: "tick"; ts: number }
+  input: RulesHitsEvent | LLMResult | { type: "tick"; ts: number },
+  ctx: ScoreContext
 ): { next: ScoreState; events: Array<ScoreUpdated | AlertTriggered> };
+
+// Per-call facts the orchestrator already holds, passed in so the reducer can emit
+// complete events (tick has no callId; alerts need a snippet) while staying pure.
+interface ScoreContext {
+  callId: CallId;
+  startedAt: number;                      // CallState.startedAt, for firstSeenMs
+  recentTurns: Array<{ speaker: Speaker; text: string }>;   // last 3 become AlertTriggered.snippet
+}
 
 interface ScoreState {
   score: number;
   floor: number;                          // minimum set by hard rule combos; LLM can't go below it
   level: RiskLevel;
-  signals: Partial<Record<Signal, { source: "rules" | "llm" | "both"; firstSeenMs: number }>>;
+  signals: Partial<Record<Signal, { source: "rules" | "llm" | "both"; firstSeenMs: number }>>;   // firstSeenMs: since call start
   alertArmed: boolean;                    // re-arms after score drops well below threshold
   lastReason: string;
 }
@@ -393,20 +401,11 @@ crossing.
 
 ---
 
-### 3.7 Alerts (guardian notification)
+### 3.7 Alerts (notifications)
 
-> **Changed:** Twilio has been dropped, so there is no SMS channel. The guardian is
-> notified in the dashboard instead. The `alert.triggered` contract from §3.6 is
-> unchanged — only delivery differs.
-
-**Owns:** delivering an alert to the guardian and reporting whether it landed.
+**Owns:** the notification template, sending, and delivery status.
 
 **Input:** `alert.triggered` plus the call's `Guardian`.
-
-**Delivery:** a browser notification raised by the guardian's dashboard (the
-`Notification` API), alongside the in-page risk meter. The dashboard receives the
-alert over its existing WebSocket as a `ServerMsg` of type `alert` (§3.8); the
-notification is the dashboard's rendering of it.
 
 **Output event:**
 
@@ -415,24 +414,25 @@ interface AlertSent {
   type: "alert.sent";
   callId: CallId;
   alertId: string;
-  channel: "browser";                     // was "sms"
-  status: "sent" | "failed";              // failed = no dashboard subscribed
+  channel: "notification";
+  status: "sent" | "failed";              // "sent" = provider accepted it, not device delivery
+  providerId?: string;                    // notification provider message ID
   error?: string;
   ts: number;
 }
 ```
 
-**Notification content (keep it glanceable):**
+**Notification format (body under ~180 characters, so a lock screen shows it all):**
 
 ```
-⚠️ Possible scam call — risk 82
-"Buy the gift cards and don't tell your daughter."
-Why: payment in gift cards + secrecy request.
+Title: ⚠️ Possible scam call (risk 82)
+Body:  "Buy the gift cards and don't tell your daughter."
+       Why: payment in gift cards + secrecy request.
+Tap:   https://<host>/call/<callId>
 ```
 
-**Done when:** a manual `alert.triggered` raises a notification on a subscribed
-dashboard and emits `alert.sent`. If no dashboard is connected, `alert.sent` reports
-`failed` rather than silently dropping — the guardian was not actually reached.
+**Done when:** a manual `alert.triggered` sends a notification to a test guardian's
+device and emits `alert.sent`.
 
 ---
 
@@ -473,6 +473,20 @@ full call.
 
 **REST (call history):** `GET /api/calls` (list) and `GET /api/calls/:callId` (full
 record).
+
+```ts
+// GET /api/calls -> CallSummary[] (newest first); a `calls` row (§3.9) with _id as callId
+interface CallSummary {
+  callId: CallId; source: "webrtc"; from?: string; to?: string;
+  guardian: Guardian; startedAt: number; endedAt?: number;   // endedAt absent while live
+  maxScore: number; finalLevel: RiskLevel; alertCount: number;
+}
+// GET /api/calls/:callId -> CallRecord (404 if unknown)
+interface CallRecord {
+  call: CallSummary;
+  events: Array<{ callId: CallId; ts: number; type: string; payload: object }>;  // ts ascending
+}
+```
 
 **Done when:** the dashboard renders correctly from the mock WebSocket server
 (section 5) with no backend.
@@ -515,7 +529,7 @@ addition is a post-session summary built from the stored events.
 
 ## 5. Working in parallel: fixtures and mocks
 
-These let every workstream start immediately, without waiting on another module or a vendor.
+These let every workstream start immediately, without waiting for a live call or a vendor.
 
 | Tool | What it is | Who uses it |
 |---|---|---|
@@ -534,7 +548,7 @@ and the LLM prompt.
 
 | Workstream | Modules |
 |---|---|
-| A. Audio | Call ingestion, STT adapters, WebRTC fallback |
+| A. Audio | Call ingestion (WebRTC), STT adapters |
 | B. Core | Orchestrator, rules classifier, score engine |
 | C. AI | LLM classifier (prompt, schema, evaluation against fixtures) |
 | D. Frontend | Guardian dashboard |
@@ -544,7 +558,7 @@ and the LLM prompt.
 
 1. Fixture replay → rules → score → dashboard (no vendors).
 2. Swap replay for live STT on recorded audio.
-3. Swap recorded audio for a live two-browser WebRTC call.
+3. Swap recorded audio for a live WebRTC call.
 4. Replace the mock LLM with Gemini.
 5. Turn on guardian notifications and MongoDB writes.
 

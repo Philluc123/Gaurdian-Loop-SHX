@@ -15,10 +15,14 @@
     "dev": "npm run dev --workspace=@guardian-loop/server",
     "replay": "tsx scripts/replay.ts",
     "make-audio": "tsx scripts/make-fixture-audio.ts",
-    "fake-call": "tsx scripts/fake-webrtc.ts"
+    "fake-call": "tsx scripts/fake-webrtc.ts",
+    "mock:dashboard": "vite-node mocks/dashboard-ws.ts --"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "tsx": "^4.23.15",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vite-node": "^2.1.9",
+    "ws": "^8.22.0"
   }
 }

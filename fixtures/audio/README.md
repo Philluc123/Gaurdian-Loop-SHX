@@ -2,7 +2,7 @@
 
 Recorded μ-law (or pcm16) `.wav` audio, one file per speaker per call, used to
 build and test the STT adapters (`apps/server/src/stt-adapters`) against real audio
-without needing two people and two microphones.
+without a live WebRTC call.
 
 ## Naming
 

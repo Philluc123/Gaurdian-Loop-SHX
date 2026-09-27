@@ -2,7 +2,8 @@
 
 ShellHacks project. Guardian Loop listens to a phone call in real time, scores it for
 scam-call risk (impersonation, urgency, gift-card/wire payment requests, secrecy
-coaching, etc.), and alerts a designated guardian in a live dashboard of the call.
+coaching, etc.), and alerts a designated guardian with a notification linking to a live
+dashboard of the call.
 
 Full input/output contracts for every module live in
 [`docs/module-contracts.md`](docs/module-contracts.md) — **read that before writing
@@ -18,7 +19,7 @@ holds per-call state, everything else is a pure/stateless function. Full diagram
 ```
 Call ingestion → STT adapter → Orchestrator → Rules classifier ┐
                                     │          LLM classifier   ├→ Score engine → Dashboard
-                                    │                                            → Alerts (guardian notification)
+                                    │                                            → Alerts (notifications)
                                     └──────────────────────────────────────────→ Event store (Mongo)
 ```
 
@@ -74,7 +75,7 @@ See [`fixtures/README.md`](fixtures/README.md) and [`mocks/README.md`](mocks/REA
 
 | Workstream | Modules | Folder(s) |
 |---|---|---|
-| A. Audio | WebRTC call ingestion, STT adapters | `apps/server/src/call-ingestion` (**built**), `apps/server/src/stt-adapters` (**Deepgram built**) |
+| A. Audio | Call ingestion (WebRTC), STT adapters | `apps/server/src/call-ingestion` (**built**), `apps/server/src/stt-adapters` (**Deepgram built**) |
 | B. Core | Orchestrator, rules classifier, score engine | `apps/server/src/orchestrator`, `apps/server/src/rules-classifier`, `apps/server/src/score-engine` |
 | C. AI | LLM classifier (prompt, schema, eval) | `apps/server/src/llm-classifier` |
 | D. Frontend | Guardian dashboard | `apps/dashboard` |
@@ -84,7 +85,7 @@ See [`fixtures/README.md`](fixtures/README.md) and [`mocks/README.md`](mocks/REA
 
 1. Fixture replay → rules → score → dashboard (no vendors).
 2. Swap replay for live STT on recorded audio.
-3. Swap recorded audio for a live two-browser WebRTC call.
+3. Swap recorded audio for a live WebRTC call.
 4. Replace the mock LLM with Gemini.
 5. Turn on guardian notifications and MongoDB writes.
 

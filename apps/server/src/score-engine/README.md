@@ -13,9 +13,32 @@ deciding when to fire an alert.
 ```ts
 function updateScore(
   prev: ScoreState,
-  input: RulesHitsEvent | LLMResult | { type: "tick"; ts: number }
+  input: RulesHitsEvent | LLMResult | { type: "tick"; ts: number },
+  ctx: { callId: CallId; startedAt: number; recentTurns: Array<{ speaker: Speaker; text: string }> }
 ): { next: ScoreState; events: Array<ScoreUpdated | AlertTriggered> };
+
+function initialScoreState(): ScoreState;   // store this in CallState on call.started
 ```
+
+`ctx` comes straight from the orchestrator's `CallState` (`callId`, `startedAt`,
+`turns.slice(-3)`). It exists because `tick` has no `callId` and `AlertTriggered`
+needs a transcript snippet: the alerts module sends `snippet`/`reason` verbatim, so the
+event has to be complete when it leaves the reducer.
+
+## Scoring model (tunables in `config.ts`)
+
+- **Rules** (final only): strongest hit per signal per segment adds its weight; a
+  signal already seen from rules adds half. `VICTIM_RESISTANCE` subtracts.
+- **Combos**: the first time rule-backed signals complete a combo, add its bonus.
+  Hard combos (e.g. `SECRECY + UNTRACEABLE_PAYMENT`) also raise `floor` to ≥ 75.
+  LLM-only signals never complete a combo.
+- **Floor**: a sticky minimum for the rest of the call. Neither decay nor the LLM
+  can take the score below it.
+- **LLM**: the score moves halfway toward the LLM's estimate (a quarter of the way
+  when `benignContext` is true and the estimate is higher). `llm_error` is ignored.
+- **Decay**: −1 per `tick`, down to `floor`. A tick that changes nothing emits nothing.
+- **Alert**: fires when the score reaches 70 while armed, then disarms. It re-arms
+  only once the score drops below 50, so a hard-combo floor means one alert per call.
 
 Only **final** rule hits (`isFinal: true`) affect the score — partials are
 highlight-only. The orchestrator sends a `tick` about once per second to drive decay.

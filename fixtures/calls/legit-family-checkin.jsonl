@@ -1,0 +1,26 @@
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-001","text":"Hi Mom, it's","isFinal":false,"startMs":1200,"endMs":2240,"ts":2240}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-001","text":"Hi Mom, it's Sarah. Just checking","isFinal":false,"startMs":1200,"endMs":3279,"ts":3279}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-001","text":"Hi Mom, it's Sarah. Just checking in on you.","isFinal":true,"startMs":1200,"endMs":4170,"confidence":0.92,"ts":4170}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-002","text":"Oh hi","isFinal":false,"startMs":4870,"endMs":5679,"ts":5679}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-002","text":"Oh hi sweetheart, how are","isFinal":false,"startMs":4870,"endMs":6487,"ts":6487}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-002","text":"Oh hi sweetheart, how are the kids?","isFinal":true,"startMs":4870,"endMs":7180,"confidence":0.92,"ts":7180}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-003","text":"They're good. Emma has","isFinal":false,"startMs":7880,"endMs":9151,"ts":9151}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-003","text":"They're good. Emma has her recital on Saturday,","isFinal":false,"startMs":7880,"endMs":10421,"ts":10421}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-003","text":"They're good. Emma has her recital on Saturday, can you come?","isFinal":true,"startMs":7880,"endMs":11510,"confidence":0.92,"ts":11510}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-004","text":"Of course,","isFinal":false,"startMs":12210,"endMs":13019,"ts":13019}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-004","text":"Of course, what time does","isFinal":false,"startMs":12210,"endMs":13827,"ts":13827}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-004","text":"Of course, what time does it start?","isFinal":true,"startMs":12210,"endMs":14520,"confidence":0.92,"ts":14520}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-005","text":"Two o'clock at the","isFinal":false,"startMs":15220,"endMs":16606,"ts":16606}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-005","text":"Two o'clock at the school. I can pick","isFinal":false,"startMs":15220,"endMs":17992,"ts":17992}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-005","text":"Two o'clock at the school. I can pick you up around one.","isFinal":true,"startMs":15220,"endMs":19180,"confidence":0.92,"ts":19180}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-006","text":"That would be lovely.","isFinal":false,"startMs":19880,"endMs":21151,"ts":21151}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-006","text":"That would be lovely. Did you want me","isFinal":false,"startMs":19880,"endMs":22421,"ts":22421}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-006","text":"That would be lovely. Did you want me to bring anything?","isFinal":true,"startMs":19880,"endMs":23510,"confidence":0.92,"ts":23510}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-007","text":"Maybe some of","isFinal":false,"startMs":24210,"endMs":25250,"ts":25250}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-007","text":"Maybe some of your lemon cookies,","isFinal":false,"startMs":24210,"endMs":26289,"ts":26289}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-007","text":"Maybe some of your lemon cookies, she loves those.","isFinal":true,"startMs":24210,"endMs":27180,"confidence":0.92,"ts":27180}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-008","text":"I'll bake a batch","isFinal":false,"startMs":27880,"endMs":29151,"ts":29151}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-008","text":"I'll bake a batch on Friday. Love you,","isFinal":false,"startMs":27880,"endMs":30421,"ts":30421}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"victim","segmentId":"v-008","text":"I'll bake a batch on Friday. Love you, see you Saturday.","isFinal":true,"startMs":27880,"endMs":31510,"confidence":0.92,"ts":31510}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-009","text":"Love you too,","isFinal":false,"startMs":32210,"endMs":33035,"ts":33035}
+{"type":"transcript","callId":"fixture-legit-family-checkin","speaker":"caller","segmentId":"c-009","text":"Love you too, Mom. Bye.","isFinal":true,"startMs":32210,"endMs":33860,"confidence":0.92,"ts":33860}

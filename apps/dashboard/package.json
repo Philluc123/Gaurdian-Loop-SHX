@@ -2,9 +2,12 @@
   "name": "@guardian-loop/dashboard",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@guardian-loop/shared-types": "*",
@@ -12,9 +15,11 @@
     "react-dom": "^18.3.0"
   },
   "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.0",
     "typescript": "^5.5.0",
     "vite": "^5.4.0",
-    "@vitejs/plugin-react": "^4.3.0",
     "vitest": "^2.0.0"
   }
 }

@@ -10,6 +10,11 @@ running.
 | `dashboard-ws.ts` | Tiny WebSocket server that streams `ServerMsg`s from a fixture call | Dashboard (Workstream D) |
 | `llm.ts` | Fake `classify()` returning canned `LLMResult`s after an ~800ms delay | Orchestrator, score engine (Workstream B) |
 
+Run the dashboard mock with `npm run mock:dashboard -- [--speed 2] [--port 3000]
+[fixtures/calls/x.jsonl ...]`. It loops over the fixtures, pushing each through the
+real `runRules` and `updateScore` (no LLM), and also serves `GET /api/calls` and
+`GET /api/calls/:callId` from memory.
+
 ## Rules for mocks
 
 - A mock must speak the exact same contract as the real thing (same event/message

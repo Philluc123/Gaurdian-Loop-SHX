@@ -1,6 +1,6 @@
 # Dialogue script for scripts/make-fixture-audio.ts.
-#   caller: <text>   spoken by the scammer (Twilio inbound track)
-#   victim: <text>   spoken by the person being called (outbound / <Dial> track)
+#   caller: <text>   spoken by the scammer
+#   victim: <text>   spoken by the person being called
 #   pause: <ms>      silence on both tracks
 #
 # Rendered with Windows TTS, so this is synthetic audio at 8kHz — good enough to
